@@ -1,5 +1,3 @@
-# area512-app-maker
-
 ![Area512 App Maker](images/main.png)
 
 Ask an AI agent for an app in plain words, and it builds one for
