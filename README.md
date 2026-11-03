@@ -1,5 +1,7 @@
 # area512-app-maker
 
+![Area512 App Maker](images/main.png)
+
 Ask an AI agent for an app in plain words, and it builds one for
 [Area512](https://github.com/engneer-hamachan/area512) on the M5Stack Cardputer. It
 writes the app, plays it in an emulator to prove that it works, and tells you how
