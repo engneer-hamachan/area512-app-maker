@@ -1,0 +1,28 @@
+# Area512 built-in type declaration.
+
+class Display
+  # Screen width in pixels
+  def self.width: () -> Integer
+
+  # Screen height in pixels
+  def self.height: () -> Integer
+
+  # Physical display width in pixels, even while the app runs in a window
+  def self.screen_width: () -> Integer
+
+  # Physical display height in pixels, even while the app runs in a window
+  def self.screen_height: () -> Integer
+
+  # Draw on the whole display instead of the window (no-op without a window)
+  def self.full_screen: () -> nil
+
+  # Fill the whole screen with an RGB888 color
+  def self.fill_screen: (Integer color) -> untyped
+
+  # Set backlight brightness (0..255)
+  def self.brightness=: (Integer brightness) -> untyped
+
+  # Show/hide the text console
+  def self.console: () -> untyped
+
+end

@@ -1,0 +1,13 @@
+# Compiled apps
+*.mrb
+*.mpy
+
+# Emulator screenshots
+screenshots/*
+!screenshots/.gitkeep
+
+# Dependencies and local settings
+node_modules/
+.env
+.DS_Store
+.claude/settings.local.json

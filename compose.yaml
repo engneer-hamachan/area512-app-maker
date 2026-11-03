@@ -1,0 +1,39 @@
+services:
+  # The type checker MCP. .mcp.json starts it for the agent.
+  picoruby-ti-mcp:
+    build: docker/picoruby-ti-mcp
+    volumes:
+      - .:/workspace:ro
+
+  # Makes .a5d dot images and image.h start screens.
+  assets:
+    build: tools/assets
+    volumes:
+      - .:/workspace
+
+  # http://localhost:8080 runs the emulator in your browser.
+  emulator:
+    build: emulator
+    image: area512-emulator
+    ports:
+      - "${AREA512_EMULATOR_PORT:-8080}:8080"
+    volumes:
+      - ./apps:/workspace/apps:ro
+
+  # Compiles an app's Ruby files to .mrb in its folder.
+  compiler:
+    image: area512-emulator
+    pull_policy: never
+    entrypoint: ["sh", "/srv/emulator/compile_app.sh"]
+    working_dir: /workspace
+    volumes:
+      - .:/workspace
+
+  # The agent's own emulator, in headless Chromium.
+  emulator-browser:
+    build: emulator/browser
+    depends_on:
+      - emulator
+    volumes:
+      - ./screenshots:/workspace/screenshots
+      - ./bots:/workspace/bots:ro

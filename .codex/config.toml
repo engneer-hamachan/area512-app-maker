@@ -1,0 +1,8 @@
+# Project settings for Codex. They apply once the project is trusted.
+
+[mcp_servers.picoruby-ti]
+command = "docker"
+args = ["compose", "--progress", "quiet", "run", "--rm", "-T", "picoruby-ti-mcp"]
+disabled_tools = ["diagnostic"]
+# These tools only read the project.
+default_tools_approval_mode = "approve"

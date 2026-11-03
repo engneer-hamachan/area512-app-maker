@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Area512 Emulator</title>
+  <link rel="stylesheet" href="emulator.css">
+</head>
+<body>
+  <main>
+    <h1>Area512 Emulator</h1>
+    <div class="device">
+      <canvas id="screen" width="240" height="135" tabindex="0" aria-label="Area512 screen"></canvas>
+    </div>
+    <p id="status" role="status">Starting…</p>
+    <button id="reload" type="button">Reload apps and reboot</button>
+    <section class="transfer" aria-labelledby="transfer-title">
+      <h2 id="transfer-title">Send to the device</h2>
+      <ol>
+        <li>Connect the Cardputer by USB.</li>
+        <li>On the Cardputer, press Opt + r in the file list.</li>
+        <li>Choose the app, press Send, and pick the Cardputer in the list.</li>
+      </ol>
+      <div class="transfer-controls">
+        <select id="transfer-app" aria-label="App to send"></select>
+        <button id="transfer-send" type="button">Send</button>
+      </div>
+      <p id="transfer-status" role="status"></p>
+    </section>
+    <dl class="keys">
+      <dt>Arrow keys</dt><dd>Cursor (Fn + ; . , /)</dd>
+      <dt>Esc</dt><dd>Esc (the ` key)</dd>
+      <dt>F1</dt><dd>Fn</dd>
+      <dt>Win / Cmd</dt><dd>Opt</dd>
+      <dt>Ctrl, Alt, Shift</dt><dd>The same keys</dd>
+    </dl>
+  </main>
+  <script src="emulator.js"></script>
+  <script src="transfer.js"></script>
+  <script src="area512.js"></script>
+</body>
+</html>

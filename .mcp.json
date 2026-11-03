@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "picoruby-ti": {
+      "command": "docker",
+      "args": ["compose", "--progress", "quiet", "run", "--rm", "-T", "picoruby-ti-mcp"]
+    }
+  }
+}
