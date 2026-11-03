@@ -91,7 +91,7 @@ async function waitForReady(lineReader) {
     const line = await lineReader.readLine(deadline);
 
     if (line === null) {
-      throw new Error('The Cardputer is not receiving. Press Opt + r in the file list.');
+      throw new Error('The Cardputer is not receiving. Press t in the file list, type recv and press Enter.');
     }
 
     if (line === REPLY_PREFIX + READY_REPLY) {

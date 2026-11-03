@@ -276,8 +276,10 @@ screen can be read in the middle of a redraw.
 
 ## Put it on the device
 
-You do this when the person asks for it. The Cardputer must be connected by USB,
-with its file list on the screen.
+You do this when the person asks for it. First ask the person to connect the
+Cardputer by USB, press `t` in the file list for the terminal, type `recv` and press
+Enter. The Cardputer then shows "Receiving over USB. Esc to exit" and waits. Send
+only after that.
 
 ```sh
 docker compose run --rm compiler apps/mygame    # writes the .mrb files
@@ -292,9 +294,9 @@ Run the tool for the computer you are on, outside Docker:
 | Mac | `bin/area512-send-darwin-arm64`, `bin/area512-send-darwin-amd64` |
 | Windows | `bin\area512-send-windows-amd64.exe`, `bin\area512-send-windows-arm64.exe` |
 
-The tool puts the Cardputer in receive mode by itself and copies the app to
-`/home/apps/<name>`. If it reports several serial ports, pass the right one with
-`--port`. Then tell the person to open `/home/apps`, select the app and press `R`.
+The tool copies the app to `/home/apps/<name>`. If it reports several serial
+ports, pass the right one with `--port`. Then tell the person to open `/home/apps`,
+select the app and press `R`.
 
 The person can also send an app by themselves from the emulator page in Chrome or
 Edge, under "Send to the device".

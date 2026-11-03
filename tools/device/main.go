@@ -29,11 +29,7 @@ const (
 	serialBaudRate      = 115200
 	readPollTimeout     = 100 * time.Millisecond
 	replyTimeout        = 5 * time.Second
-	alreadyReceiveWait  = 1500 * time.Millisecond
-	startReceiveWait    = 5 * time.Second
-	// Esc then r is the filer's receive key. Sent while the device is already
-	// receiving, it would prefix the next command, so check for READY first.
-	startReceiveKeys = "\x1br"
+	readyWait           = 5 * time.Second
 )
 
 var devicePortPatterns = map[string]*regexp.Regexp{
@@ -129,22 +125,6 @@ func (device *deviceConnection) waitForReady(waitTime time.Duration) bool {
 			return true
 		}
 	}
-}
-
-func (device *deviceConnection) startReceiving() error {
-	if device.waitForReady(alreadyReceiveWait) {
-		return nil
-	}
-
-	if _, err := device.port.Write([]byte(startReceiveKeys)); err != nil {
-		return err
-	}
-
-	if !device.waitForReady(startReceiveWait) {
-		return errors.New("the Cardputer did not start receiving: show its file list and try again")
-	}
-
-	return nil
 }
 
 func (device *deviceConnection) expectOk(devicePath string) error {
@@ -251,8 +231,10 @@ func send(appPath string, portName string) error {
 	}
 	defer device.port.Close()
 
-	if err := device.startReceiving(); err != nil {
-		return err
+	if !device.waitForReady(readyWait) {
+		return errors.New(
+			"the Cardputer is not receiving: press t in its file list, type recv, press Enter and try again",
+		)
 	}
 
 	appDevicePath := path.Join(deviceAppsPath, filepath.Base(filepath.Clean(appPath)))

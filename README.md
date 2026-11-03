@@ -51,9 +51,9 @@ After an app changes, press **Reload apps and reboot**. To use another port, set
 
 ## Put an app on the device
 
-Connect the Cardputer by USB, show its file list, and ask the agent to put the app
-on the device. You can also send it yourself from http://localhost:8080 in Chrome
-or Edge, under "Send to the device".
+Connect the Cardputer by USB, press `t` in its file list, type `recv` and press
+Enter, then ask the agent to put the app on the device. You can also send it
+yourself from http://localhost:8080 in Chrome or Edge, under "Send to the device".
 
 ## What is here
 
