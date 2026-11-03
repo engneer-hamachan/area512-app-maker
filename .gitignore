@@ -11,3 +11,7 @@ node_modules/
 .env
 .DS_Store
 .claude/settings.local.json
+
+# Apps other than snake
+apps/*
+!apps/snake/
