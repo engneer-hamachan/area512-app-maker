@@ -79,6 +79,9 @@ class String
   # Get byte value at specified position
   def getbyte: (Integer index) -> (Integer | nil)
 
+  # Set the byte at specified position to value (0..255) and return value
+  def setbyte: (Integer index, Integer value) -> Integer
+
   # Check if contains specified string
   def include?: (String other) -> bool
 
