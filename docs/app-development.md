@@ -96,6 +96,14 @@ with Area512: their largest is 165 lines with 14 methods, and `solitair` is 11
 files. A file far denser than that does not give a compile error: **the device
 crashes with "Out of memory"**.
 
+### Hand off to another app
+
+When one app cannot fit in the 100 KB, even split by role, split it into apps
+and switch between them with `Area512.run_next(path)`: when the current app
+returns, the file manager runs `path` right away, such as `/home/apps/<name>-battle`.
+Pass what the next app needs through a file under `/data` with `SD.write`, and
+read it back with `SD.read`. See "Area512" in `docs/reference/ruby-api.md`.
+
 ### require
 
 Most built-ins need a `require`:
