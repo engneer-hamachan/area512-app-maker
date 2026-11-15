@@ -82,6 +82,7 @@ FIRMWARE_SOURCES := \
   $(HAL)/gfx/area512_display.cpp \
   $(HAL)/gfx/area512_gfx.cpp \
   $(HAL)/gfx/area512_crt.cpp \
+  $(HAL)/gfx/area512_quaternary_crt.cpp \
   $(HAL)/sd/area512_data_path.c \
   $(HAL)/sd/area512_manifest.c \
   $(HAL)/sd/area512_seed.c \

@@ -66,6 +66,7 @@ MRuby::CrossBuild.new('wasm-femtoruby') do |conf|
   conf.gem gemdir: "#{picoruby_gems_path}/picoruby-spi"
 
   conf.gem gemdir: "#{area512_component_path}/mrbgems/picoruby-area512-sprite"
+  conf.gem gemdir: "#{area512_component_path}/mrbgems/picoruby-area512-quaternary-sprite"
   conf.gem gemdir: "#{area512_component_path}/mrbgems/picoruby-area512-widget"
   conf.gem gemdir: "#{area512_component_path}/mrbgems/picoruby-area512-dot"
   conf.gem gemdir: "#{area512_component_path}/mrbgems/picoruby-area512-console"
