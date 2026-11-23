@@ -12,6 +12,22 @@
       "mcp__picoruby-ti",
       "mcp__picoruby-ti-2432s028"
     ],
-    "deny": ["mcp__picoruby-ti__diagnostic", "mcp__picoruby-ti-2432s028__diagnostic"]
+    "deny": [
+      "mcp__picoruby-ti__diagnostic",
+      "mcp__picoruby-ti-2432s028__diagnostic"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/session-start.sh",
+            "timeout": 3600
+          }
+        ]
+      }
+    ]
   }
 }
