@@ -19,6 +19,10 @@ workflow-runs/
 game-definitions/*
 !game-definitions/template.md
 
+# Bots other than snake (the workflow writes probe bots here)
+bots/*
+!bots/snake.mjs
+
 # Apps other than snake
 apps/*
 !apps/snake/
