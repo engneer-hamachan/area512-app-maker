@@ -60,7 +60,12 @@ as a pull request. `apps/` here is ignored by git, so orz-games is where an app 
   `.mrb` files, `main.manifest`, `.a5d` images, `image.h`, data files and a
   `README.md` (what the app is, its keys, what it keeps). Do not copy
   `.ti-loader.manifest`.
+- Copy the screenshot you checked, at 4x (`screenshots/<name>-...-x4.png`, or
+  enlarge it to 4x), to `orz-games/apps/<name>/screenshot.png`.
 - Work on a new branch in orz-games named after the app, commit, push, and open a
   pull request against its default branch. Write the PR in the person's language:
-  what the app does, its keys, and the screenshot you checked.
+  what the app does, its keys, and the screenshot you checked. Show the
+  screenshot in the PR description as an image, linked by the commit that added
+  it so the link still works after the branch is deleted:
+  `![...](https://github.com/engneer-hamachan/orz-games/blob/<commit>/apps/<name>/screenshot.png?raw=true)`.
 - Updating an app that is already in orz-games works the same way, on a new branch.
