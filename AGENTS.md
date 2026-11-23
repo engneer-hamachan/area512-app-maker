@@ -54,10 +54,12 @@ as a pull request. `apps/` here is ignored by git, so orz-games is where an app 
 - When the person asks to publish an app (or says the app is done and wants it in
   orz-games), check that `/home/user/orz-games` is cloned. If the session does not
   have the repository, attach it and clone it.
-- Copy `apps/<name>/` to `orz-games/apps/<name>/`: the `.rb` files, `main.manifest`,
-  `.a5d` images, `image.h`, data files and a `README.md` (what the app is, its keys,
-  what it keeps). Do not copy `.ti-loader.manifest`. Leave out `.mrb` files unless
-  the person asks for them.
+- Compile the app first with `docker compose run --rm compiler apps/<name>`, so
+  that its `.mrb` files match the `.rb` files.
+- Copy `apps/<name>/` to `orz-games/apps/<name>/`: the `.rb` files, the compiled
+  `.mrb` files, `main.manifest`, `.a5d` images, `image.h`, data files and a
+  `README.md` (what the app is, its keys, what it keeps). Do not copy
+  `.ti-loader.manifest`.
 - Work on a new branch in orz-games named after the app, commit, push, and open a
   pull request against its default branch. Write the PR in the person's language:
   what the app does, its keys, and the screenshot you checked.
