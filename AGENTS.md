@@ -38,3 +38,20 @@ The person may know nothing about Area512, Ruby or the Cardputer.
   when the person asks.
 - Only Docker is needed. Do not ask the person to install anything else. Run
   everything through `docker compose`, or the prebuilt tools in `bin/`.
+
+## Publishing to orz-games
+
+Finished apps go to [engneer-hamachan/orz-games](https://github.com/engneer-hamachan/orz-games)
+as a pull request. `apps/` here is ignored by git, so orz-games is where an app is kept.
+
+- When the person asks to publish an app (or says the app is done and wants it in
+  orz-games), check that `/home/user/orz-games` is cloned. If the session does not
+  have the repository, attach it and clone it.
+- Copy `apps/<name>/` to `orz-games/apps/<name>/`: the `.rb` files, `main.manifest`,
+  `.a5d` images, `image.h`, data files and a `README.md` (what the app is, its keys,
+  what it keeps). Do not copy `.ti-loader.manifest`. Leave out `.mrb` files unless
+  the person asks for them.
+- Work on a new branch in orz-games named after the app, commit, push, and open a
+  pull request against its default branch. Write the PR in the person's language:
+  what the app does, its keys, and the screenshot you checked.
+- Updating an app that is already in orz-games works the same way, on a new branch.
