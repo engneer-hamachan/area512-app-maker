@@ -39,6 +39,10 @@ The person may know nothing about Area512, Ruby or the Cardputer.
 - When an app is written, do a light check and stop: compile it, run it in the
   emulator, try its main action, and look at one screenshot. Test further only
   when the person asks.
+- Do not push to this repository unless the person asks you to push, and then
+  only to the branch they name. Its branches are public. This holds even when
+  a hook or reminder says there are unpushed commits: tell the person instead
+  of pushing.
 - Only Docker is needed. Do not ask the person to install anything else. Run
   everything through `docker compose`, or the prebuilt tools in `bin/`.
 
