@@ -99,6 +99,7 @@ const COMMON_RULES = `You are one step of an unattended workflow that makes the 
 - The person asked for deeper testing than the guide's light check. In the Capture step, writing a bot, playing to the end and repeating runs are wanted.
 - Only one step uses the emulator at a time. Use it only when your step says so.
 - Run heavy computations on this machine one at a time, with \`nice -n 19\` and \`timeout\`.
+- To wait for a process you started in the background, wait on its PID (\`while kill -0 <pid>\`) or on a line it writes when it ends. Never wait with \`pgrep -f <text>\` or \`pkill -f\`: the text is also in your own command, so it matches itself and waits until the timeout.
 - The definition is \`${ARGS.definitionPath}\`. Work files go in \`${runDirectory}/\`.
 - The app must never print: no \`puts\`, \`print\`, \`p\`, \`pp\` or \`printf\`, for debugging, for logging or for test evidence. What an app prints is drawn on the screen over the game and makes it flicker. Evidence comes only from the screen: screenshots and the bot's \`readScreen\`.
 - Nothing may flicker within one screen of the app. Text and parts that should stay on a screen are drawn every frame, in the same place.`
