@@ -1,6 +1,11 @@
 # Compiles the firmware sources around libmruby.a and links them for the browser.
 # Called by build.sh, which has already built libmruby.a.
+#
+# BOARD is cardputer or 2432s028. Each board takes the sources that
+# components/area512_hal/CMakeLists.txt builds for it, and its own port in
+# port/$(BOARD).
 
+BOARD := $(AREA512_BOARD)
 SOURCE := $(AREA512_SOURCE_PATH)
 EMULATOR := $(AREA512_EMULATOR_PATH)
 OUTPUT := $(AREA512_EMULATOR_OUTPUT_PATH)
@@ -14,10 +19,57 @@ TREE_SITTER := $(COMPONENTS)/area512_tree_sitter
 M5GFX := $(COMPONENTS)/m5gfx/src
 PICORUBY := $(SOURCE)/R2P2-ESP32/components/picoruby-esp32/picoruby
 PICORUBY_GEMS := $(PICORUBY)/mrbgems
-PICORUBY_BUILD := $(PICORUBY)/build/wasm-femtoruby
 PORT := $(EMULATOR)/port
 OBJECTS := $(OUTPUT)/objects
 WEB := $(OUTPUT)/web
+
+ifeq ($(BOARD),cardputer)
+PICORUBY_BUILD := $(PICORUBY)/build/wasm-femtoruby
+BOARD_FLAGS :=
+FILER_INCLUDE_FLAGS := -I$(AREA512)/mrbgems/picoruby-area512-filer/src
+
+BOARD_SOURCES := \
+  $(HAL)/console/keyboard.cpp \
+  $(HAL)/console/output.c \
+  $(HAL)/gfx/area512_display.cpp \
+  $(HAL)/gfx/area512_gfx.cpp
+
+# Built only with AREA512_CYD in components/area512_micropython/CMakeLists.txt.
+MICROPYTHON_EXCLUDED_SOURCES := $(MICROPYTHON)/modules/area512_micropython_touch.c
+
+BOARD_EXPORTED_FUNCTIONS := _area512_emulator_is_keyboard_configured,_area512_emulator_push_key_event
+
+SEED_THEME_BACKGROUND_KIND := builtin_display
+SEED_HOME := $(SOURCE)/storage/home
+else ifeq ($(BOARD),2432s028)
+PICORUBY_BUILD := $(PICORUBY)/build/wasm-femtoruby-cyd-2432s028
+BOARD_FLAGS := -DAREA512_CYD -DAREA512_CYD_2432S028
+FILER_INCLUDE_FLAGS := -I$(AREA512)/mrbgems/picoruby-area512-filer/cyd/src \
+  -I$(AREA512)/mrbgems/picoruby-area512-filer/src
+
+# cyd/gfx/area512_display.cpp needs the panel, so port/2432s028 replaces it,
+# and cyd/sd/area512_sd.c is replaced by port/src/sd_port.c.
+BOARD_SOURCES := \
+  $(HAL)/cyd/console/touch.cpp \
+  $(HAL)/cyd/console/soft_keyboard.cpp \
+  $(HAL)/cyd/touch/area512_median.c \
+  $(HAL)/cyd/touch/area512_touch_setting.c \
+  $(HAL)/cyd/touch/area512_touch_setting_screen.c \
+  $(HAL)/cyd/touch/touch_calibration.c \
+  $(HAL)/cyd/console/output.c \
+  $(HAL)/cyd/gfx/area512_gfx.cpp \
+  $(HAL)/cyd/gfx/area512_ascii_efont.cpp \
+  $(HAL)/bluetooth/area512_bluetooth_disabled.cpp
+
+MICROPYTHON_EXCLUDED_SOURCES :=
+
+BOARD_EXPORTED_FUNCTIONS := _area512_emulator_is_touch_panel_polled,_area512_emulator_press_touch,_area512_emulator_release_touch,_area512_emulator_push_typed_byte
+
+SEED_THEME_BACKGROUND_KIND := tft
+SEED_HOME := $(SOURCE)/storage_cyd/home
+else
+$(error BOARD is cardputer or 2432s028, not "$(BOARD)")
+endif
 
 COMMON_FLAGS := -O2 -pthread -DNDEBUG -DESP32_PLATFORM -DPICORB_VM_MRUBYC \
   -DPICORB_INT64 -DMRBC_INT64 -DMRBC_TICK_UNIT=10 \
@@ -25,6 +77,7 @@ COMMON_FLAGS := -O2 -pthread -DNDEBUG -DESP32_PLATFORM -DPICORB_VM_MRUBYC \
   -DMRBC_CONVERT_CRLF=1 -DMRBC_USE_ALLOC_PROF -DMRBC_NO_STDIO -DDISABLE_MRUBY \
   -DMRBC_SCHEDULER_EXIT=1 -DMRBC_USE_MATH=1 -DMAX_SYMBOLS_COUNT=2000 \
   -DMAX_VM_COUNT=255 -DMAX_REGS_SIZE=255 -DLGFX_LINUX_FB -D__linux__ \
+  $(BOARD_FLAGS) \
   -Wno-format -Wno-unused-function -Wno-implicit-function-declaration \
   -Wno-int-conversion -Wno-incompatible-pointer-types -Wno-deprecated-declarations
 
@@ -53,7 +106,7 @@ INCLUDE_FLAGS := -I$(PORT)/include -I$(OUTPUT)/generated -I$(M5GFX) -I$(M5GFX)/l
   -I$(AREA512)/mrbgems/picoruby-area512-dot/src \
   -I$(AREA512)/mrbgems/picoruby-area512-repl/src \
   -I$(AREA512)/mrbgems/picoruby-area512-widget/src \
-  -I$(AREA512)/mrbgems/picoruby-area512-filer/src \
+  $(FILER_INCLUDE_FLAGS) \
   -I$(MICROPYTHON) -I$(MICROPYTHON)/include -I$(MICROPYTHON_EMBED) \
   -I$(MICROPYTHON_EMBED)/port \
   -I$(TREE_SITTER)/tree-sitter/lib/include \
@@ -75,12 +128,8 @@ FIRMWARE_SOURCES := \
   $(PICORUBY_GEMS)/picoruby-watchdog/ports/esp32/watchdog.c \
   $(PICORUBY_GEMS)/picoruby-require/ports/esp32/platform.c \
   $(HAL)/console/input.cpp \
-  $(HAL)/console/keyboard.cpp \
   $(HAL)/console/getch.cpp \
-  $(HAL)/console/output.c \
   $(HAL)/console/system_metrics.cpp \
-  $(HAL)/gfx/area512_display.cpp \
-  $(HAL)/gfx/area512_gfx.cpp \
   $(HAL)/gfx/area512_crt.cpp \
   $(HAL)/gfx/area512_quaternary_crt.cpp \
   $(HAL)/sd/area512_data_path.c \
@@ -94,9 +143,11 @@ FIRMWARE_SOURCES := \
   $(HAL)/animation/filer_terminal_cursor_animation.c \
   $(HAL)/animation/filer_window_box.c \
   $(HAL)/animation/filer_window_open_animation.c \
-  $(HAL)/animation/filer_window_close_animation.c
+  $(HAL)/animation/filer_window_close_animation.c \
+  $(BOARD_SOURCES)
 
-PORT_SOURCES := $(wildcard $(PORT)/src/*.c) $(wildcard $(PORT)/src/*.cpp)
+PORT_SOURCES := $(wildcard $(PORT)/src/*.c) $(wildcard $(PORT)/src/*.cpp) \
+  $(wildcard $(PORT)/$(BOARD)/*.c) $(wildcard $(PORT)/$(BOARD)/*.cpp)
 
 M5GFX_SOURCES := \
   $(wildcard $(M5GFX)/lgfx/v1/*.cpp) \
@@ -114,7 +165,7 @@ TREE_SITTER_SOURCES := \
 
 MICROPYTHON_SOURCES := \
   $(wildcard $(MICROPYTHON)/*.c) \
-  $(wildcard $(MICROPYTHON)/modules/*.c) \
+  $(filter-out $(MICROPYTHON_EXCLUDED_SOURCES),$(wildcard $(MICROPYTHON)/modules/*.c)) \
   $(wildcard $(MICROPYTHON_EMBED)/py/*.c) \
   $(MICROPYTHON_EMBED)/shared/runtime/gchelper_generic.c \
   $(MICROPYTHON_EMBED)/port/embed_util.c
@@ -134,7 +185,7 @@ LINK_FLAGS := -O2 -pthread -sPROXY_TO_PTHREAD -sPTHREAD_POOL_SIZE=8 \
   -sINITIAL_MEMORY=256MB -sSTACK_SIZE=8MB -sDEFAULT_PTHREAD_STACK_SIZE=2MB \
   -sEXIT_RUNTIME=0 -sFORCE_FILESYSTEM=1 \
   -sEXPORTED_RUNTIME_METHODS=FS,HEAPU8,addRunDependency,removeRunDependency \
-  -sEXPORTED_FUNCTIONS=_main,_area512_emulator_framebuffer,_area512_emulator_is_keyboard_configured,_area512_emulator_push_key_event \
+  -sEXPORTED_FUNCTIONS=_main,_area512_emulator_framebuffer,$(BOARD_EXPORTED_FUNCTIONS) \
   -sENVIRONMENT=web,worker
 
 all: $(WEB)/area512.js
@@ -151,10 +202,11 @@ $(OBJECTS)/%.cpp.o: /%.cpp
 	@mkdir -p $(@D)
 	em++ -std=gnu++17 -fno-exceptions -fno-rtti $(COMMON_FLAGS) $(INCLUDE_FLAGS) -c $< -o $@
 
-# The seed staging of components/area512_hal/CMakeLists.txt for the Cardputer's
-# built-in display, as one object that defines the symbols area512_seed.c needs.
+# The seed staging of components/area512_hal/CMakeLists.txt for the board, as
+# one object that defines the symbols area512_seed.c needs.
 $(OUTPUT)/area512_seed.tar: $(EMULATOR)/seed.sh
-	sh $(EMULATOR)/seed.sh $(SOURCE)/storage $(OUTPUT)/seed_staging $@
+	sh $(EMULATOR)/seed.sh $(SOURCE)/storage $(SEED_THEME_BACKGROUND_KIND) $(SEED_HOME) \
+	  $(OUTPUT)/seed_staging $@
 
 $(OBJECTS)/area512_seed_tar.o: $(OUTPUT)/area512_seed.tar $(PORT)/seed_tar.c
 	@mkdir -p $(@D)

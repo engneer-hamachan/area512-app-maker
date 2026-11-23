@@ -49,11 +49,22 @@ run snake
 After an app changes, press **Reload apps and reboot**. To use another port, set
 `AREA512_EMULATOR_PORT`.
 
+For the ESP32-2432S028 touch board:
+
+```sh
+docker compose up -d emulator-2432s028
+```
+
+Open http://localhost:8081 and click the screen to touch it. To use another port,
+set `AREA512_EMULATOR_2432S028_PORT`.
+
 ## Put an app on the device
 
 Connect the Cardputer by USB, press `t` in its file list, type `recv` and press
-Enter, then ask the agent to put the app on the device. You can also send it
-yourself from http://localhost:8080 in Chrome or Edge, under "Send to the device".
+Enter, then ask the agent to put the app on the device. On the ESP32-2432S028, tap
+`TRM` in the file list, type `recv` and tap `Enter`. You can also send it
+yourself from http://localhost:8080 (2432S028: http://localhost:8081) in Chrome or
+Edge, under "Send to the device".
 
 ## What is here
 
@@ -64,5 +75,5 @@ yourself from http://localhost:8080 in Chrome or Edge, under "Send to the device
 | `docs/` | How to build an app, and the Area512 reference, for the agent |
 | `emulator/` | The emulator: Area512's firmware sources built for the browser |
 | `tools/assets/` | Makes dot images and start screens |
-| `tools/device/` | Sends an app to the Cardputer over USB |
+| `tools/device/` | Sends an app to the device over USB |
 | `docker/picoruby-ti-mcp/` | The type checker that tells the agent which methods exist |

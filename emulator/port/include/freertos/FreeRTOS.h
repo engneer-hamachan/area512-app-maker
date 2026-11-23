@@ -21,6 +21,11 @@ typedef struct area512_emulator_task *TaskHandle_t;
   ((TickType_t)((uint64_t)(milliseconds) / portTICK_PERIOD_MS))
 #define tskIDLE_PRIORITY 0
 #define pdPASS 1
+#define pdFAIL 0
+#define pdTRUE 1
+#define pdFALSE 0
+#define errQUEUE_FULL 0
+#define portMAX_DELAY ((TickType_t)0xffffffffUL)
 
 void area512_emulator_disable_interrupts(void);
 void area512_emulator_enable_interrupts(void);

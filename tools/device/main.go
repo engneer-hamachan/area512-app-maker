@@ -1,10 +1,13 @@
-// area512-send copies an app folder to a Cardputer over USB, using the protocol of
-// components/area512_hal/usb/area512_usb_receive.c.
+// area512-send copies an app folder to a Cardputer or an ESP32-2432S028 over USB,
+// using the protocol of components/area512_hal/usb/area512_usb_receive.c.
+//
+// The Cardputer receives on the ESP32-S3's own USB serial port. The 2432S028
+// receives on its UART console through the CH340 USB serial chip, which
+// tool/usb_send.py of area512 opens at 115200 baud with RTS and DTR lowered.
 package main
 
 import (
 	"bytes"
-	"errors"
 	"flag"
 	"fmt"
 	"hash/crc32"
@@ -32,18 +35,47 @@ const (
 	readyWait           = 5 * time.Second
 )
 
-var devicePortPatterns = map[string]*regexp.Regexp{
-	"linux":   regexp.MustCompile(`^/dev/ttyACM\d+$`),
-	"darwin":  regexp.MustCompile(`^/dev/cu\.usbmodem`),
-	"windows": regexp.MustCompile(`^COM\d+$`),
+type board struct {
+	deviceName string
+	// Serial port names of the board, by runtime.GOOS.
+	portPatterns map[string]*regexp.Regexp
+	// The CH340's DTR and RTS reset the ESP32 or hold it in its bootloader.
+	isResetSignalLoweredAfterOpen bool
+	receiveInstructions           string
+}
+
+const defaultBoardName = "cardputer"
+
+var boards = map[string]board{
+	"cardputer": {
+		deviceName: "Cardputer",
+		portPatterns: map[string]*regexp.Regexp{
+			"linux":   regexp.MustCompile(`^/dev/ttyACM\d+$`),
+			"darwin":  regexp.MustCompile(`^/dev/cu\.usbmodem`),
+			"windows": regexp.MustCompile(`^COM\d+$`),
+		},
+		isResetSignalLoweredAfterOpen: false,
+		receiveInstructions:           "press t in its file list, type recv, press Enter and try again",
+	},
+	"2432s028": {
+		deviceName: "2432S028",
+		portPatterns: map[string]*regexp.Regexp{
+			"linux":   regexp.MustCompile(`^/dev/ttyUSB\d+$`),
+			"darwin":  regexp.MustCompile(`^/dev/cu\.(usbserial|wchusbserial)`),
+			"windows": regexp.MustCompile(`^COM\d+$`),
+		},
+		isResetSignalLoweredAfterOpen: true,
+		receiveInstructions:           "tap TRM in its file list, type recv, tap Enter and try again",
+	},
 }
 
 type deviceConnection struct {
 	port         serial.Port
 	pendingBytes []byte
+	deviceName   string
 }
 
-func findDevicePort() (string, error) {
+func findDevicePort(targetBoard board) (string, error) {
 	portNames, err := serial.GetPortsList()
 	if err != nil {
 		return "", err
@@ -52,14 +84,14 @@ func findDevicePort() (string, error) {
 	var devicePorts []string
 
 	for _, portName := range portNames {
-		if devicePortPatterns[runtime.GOOS].MatchString(portName) {
+		if targetBoard.portPatterns[runtime.GOOS].MatchString(portName) {
 			devicePorts = append(devicePorts, portName)
 		}
 	}
 
 	switch len(devicePorts) {
 	case 0:
-		return "", errors.New("no Cardputer found: connect it by USB")
+		return "", fmt.Errorf("no %s found: connect it by USB", targetBoard.deviceName)
 	case 1:
 		return devicePorts[0], nil
 	default:
@@ -70,10 +102,17 @@ func findDevicePort() (string, error) {
 	}
 }
 
-func openDevice(portName string) (*deviceConnection, error) {
+func openDevice(portName string, targetBoard board) (*deviceConnection, error) {
 	port, err := serial.Open(portName, &serial.Mode{BaudRate: serialBaudRate})
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", portName, err)
+	}
+
+	if targetBoard.isResetSignalLoweredAfterOpen {
+		if err := lowerResetSignals(port); err != nil {
+			port.Close()
+			return nil, fmt.Errorf("%s: %w", portName, err)
+		}
 	}
 
 	if err := port.SetReadTimeout(readPollTimeout); err != nil {
@@ -81,7 +120,16 @@ func openDevice(portName string) (*deviceConnection, error) {
 		return nil, err
 	}
 
-	return &deviceConnection{port: port}, nil
+	return &deviceConnection{port: port, deviceName: targetBoard.deviceName}, nil
+}
+
+// lowerResetSignals lowers RTS, then DTR, as tool/usb_send.py does.
+func lowerResetSignals(port serial.Port) error {
+	if err := port.SetRTS(false); err != nil {
+		return err
+	}
+
+	return port.SetDTR(false)
 }
 
 // readLine returns the next line, or "" and false when the deadline passes.
@@ -111,7 +159,13 @@ func (device *deviceConnection) readLine(deadline time.Time) (string, bool) {
 	}
 }
 
+// waitForReady first discards bytes left from before the port was opened, as
+// tool/usb_send.py does: a line cut short there would join the next reply.
 func (device *deviceConnection) waitForReady(waitTime time.Duration) bool {
+	if err := device.port.ResetInputBuffer(); err != nil {
+		return false
+	}
+
 	deadline := time.Now().Add(waitTime)
 
 	for {
@@ -134,7 +188,7 @@ func (device *deviceConnection) expectOk(devicePath string) error {
 		line, received := device.readLine(deadline)
 
 		if !received {
-			return fmt.Errorf("%s: no reply from the Cardputer", devicePath)
+			return fmt.Errorf("%s: no reply from the %s", devicePath, device.deviceName)
 		}
 
 		if !strings.HasPrefix(line, replyPrefix) || line == readyReplyLine {
@@ -215,9 +269,9 @@ func (device *deviceConnection) sendFolder(localPath string, devicePath string) 
 	return nil
 }
 
-func send(appPath string, portName string) error {
+func send(appPath string, portName string, targetBoard board) error {
 	if portName == "" {
-		foundPortName, err := findDevicePort()
+		foundPortName, err := findDevicePort(targetBoard)
 		if err != nil {
 			return err
 		}
@@ -225,15 +279,17 @@ func send(appPath string, portName string) error {
 		portName = foundPortName
 	}
 
-	device, err := openDevice(portName)
+	device, err := openDevice(portName, targetBoard)
 	if err != nil {
 		return err
 	}
 	defer device.port.Close()
 
 	if !device.waitForReady(readyWait) {
-		return errors.New(
-			"the Cardputer is not receiving: press t in its file list, type recv, press Enter and try again",
+		return fmt.Errorf(
+			"the %s is not receiving: %s",
+			targetBoard.deviceName,
+			targetBoard.receiveInstructions,
 		)
 	}
 
@@ -254,14 +310,17 @@ func send(appPath string, portName string) error {
 
 func main() {
 	portName := flag.String("port", "", "serial port, when more than one is connected")
+	boardName := flag.String("board", defaultBoardName, "the device: cardputer or 2432s028")
 	flag.Parse()
 
-	if flag.NArg() != 1 {
-		fmt.Fprintln(os.Stderr, "usage: area512-send [--port PORT] APP_FOLDER")
+	targetBoard, isKnownBoard := boards[*boardName]
+
+	if flag.NArg() != 1 || !isKnownBoard {
+		fmt.Fprintln(os.Stderr, "usage: area512-send [--board cardputer|2432s028] [--port PORT] APP_FOLDER")
 		os.Exit(2)
 	}
 
-	if err := send(flag.Arg(0), *portName); err != nil {
+	if err := send(flag.Arg(0), *portName, targetBoard); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}

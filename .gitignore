@@ -12,6 +12,13 @@ node_modules/
 .DS_Store
 .claude/settings.local.json
 
+# Work files of /area512-work-flow: plans, reference images, reports
+workflow-runs/
+
+# Game definitions other than the template
+game-definitions/*
+!game-definitions/template.md
+
 # Apps other than snake
 apps/*
 !apps/snake/

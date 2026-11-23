@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Area512 Emulator</title>
+  <link rel="stylesheet" href="emulator.css">
+</head>
+<body>
+  <main>
+    <h1>Area512 Emulator (2432S028)</h1>
+    <div class="device">
+      <canvas id="screen" width="320" height="240" tabindex="0" aria-label="Area512 screen" style="aspect-ratio: 320 / 240; touch-action: none"></canvas>
+    </div>
+    <p id="status" role="status">Starting…</p>
+    <button id="reload" type="button">Reload apps and reboot</button>
+    <section class="transfer" aria-labelledby="transfer-title">
+      <h2 id="transfer-title">Send to the device</h2>
+      <ol>
+        <li>Connect the 2432S028 by USB.</li>
+        <li>On the 2432S028, tap TRM in the file list, type recv and tap Enter.</li>
+        <li>Choose the app, press Send, and pick the 2432S028 in the list.</li>
+      </ol>
+      <div class="transfer-controls">
+        <select id="transfer-app" aria-label="App to send"></select>
+        <button id="transfer-send" type="button">Send</button>
+      </div>
+      <p id="transfer-status" role="status"></p>
+    </section>
+    <dl class="keys">
+      <dt>Click and drag</dt><dd>Touch the screen</dd>
+      <dt>Typing</dt><dd>The soft keyboard's keys</dd>
+      <dt>Arrow keys, Esc, Enter, Tab</dt><dd>The same soft keyboard keys</dd>
+      <dt>Ctrl + a key</dt><dd>Ctrl, then the key</dd>
+    </dl>
+  </main>
+  <script src="touch_input.js"></script>
+  <script src="emulator.js"></script>
+  <script src="transfer_settings.js"></script>
+  <script src="transfer.js"></script>
+  <script src="area512.js"></script>
+</body>
+</html>

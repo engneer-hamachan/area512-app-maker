@@ -1,14 +1,44 @@
 # Making an Area512 app
 
+## Which device
+
+Area512 runs on two devices. Use the one the person names. If they do not say,
+ask whether they have the Cardputer or the ESP32-2432S028 (a board with a 2.8
+inch touch screen, also called CYD). The device decides every row below, so use
+one column for the whole app.
+
+| | Cardputer | ESP32-2432S028 |
+|---|---|---|
+| Input | its keyboard | touching the screen; see "The 2432S028" |
+| Ruby memory per app | 100 KB | 80 KB |
+| MCP server | `picoruby-ti` | `picoruby-ti-2432s028` |
+| Signatures | `docs/reference/sig/` | `docs/reference/sig-2432s028/` |
+| Examples | `docs/reference/examples/` | `docs/reference/examples-2432s028/` |
+| Emulator for you | `emulator-browser` | `emulator-browser-2432s028` |
+| Emulator for the person | `emulator`, http://localhost:8080 | `emulator-2432s028`, http://localhost:8081 |
+| Sending | `area512-send apps/<name>` | `area512-send --board 2432s028 apps/<name>` |
+
+The commands below are written for the Cardputer. For the 2432S028, put the
+service names of its column in their place, for example
+`docker compose exec -T emulator-browser-2432s028 area512 screenshot`.
+
 ## The steps
 
 1. Agree on what the app does, in the person's words. See "Talking with the
-   person who asked" in `AGENTS.md`.
+   person who asked" in `AGENTS.md`. Settle which device it is for: see "Which
+   device".
 2. Start the tools, once per session:
 
    ```sh
    docker compose build     # the first time takes several minutes
    docker compose up -d emulator-browser
+   ```
+
+   For the 2432S028:
+
+   ```sh
+   docker compose build emulator-2432s028 emulator-browser-2432s028 picoruby-ti-mcp-2432s028
+   docker compose up -d emulator-browser-2432s028
    ```
 
 3. Create `apps/<name>/` with `main.manifest` and `.ti-loader.manifest`.
@@ -17,14 +47,15 @@
 6. Draw the images, if the app has any. See "Images".
 7. Do a light check. See "Check the app".
 8. Tell the person how to try it: `docker compose up -d emulator`, then
-   http://localhost:8080.
+   http://localhost:8080. For the 2432S028: `docker compose up -d
+   emulator-2432s028`, then http://localhost:8081.
 9. Put it on the device when they ask. See "Put it on the device".
 
 ## Where things are
 
 | You need | Look in |
 |---|---|
-| Classes and methods, with argument types | the MCP, or `docs/reference/sig/*.rbs` |
+| Classes and methods, with argument types | the MCP, or `docs/reference/sig/*.rbs` (2432S028: `docs/reference/sig-2432s028/*.rbs`) |
 | What each API is for | `docs/reference/ruby-api.md` |
 | Screens, lists, menus, dialogs, colors | `docs/reference/widget-api.md` |
 | A small game: board, keys, drawing | `docs/reference/examples/bomb/` |
@@ -34,11 +65,20 @@
 | Every Widget in use | `docs/reference/examples/gallery/` |
 | Filer, editor and dot editor keys | `docs/reference/device/*.md` |
 | A bot and the app it plays | `bots/snake.mjs`, `apps/snake/` |
+| 2432S028: touch buttons and taps on a board | `docs/reference/examples-2432s028/bomb/` |
+| 2432S028: drawing by dragging | `docs/reference/examples-2432s028/paint/` |
+| 2432S028: text entry with the soft keyboard | `docs/reference/examples-2432s028/writer/` |
+| 2432S028: saving data, many files | `docs/reference/examples-2432s028/solitair/` |
+| 2432S028: a calendar or list tool | `docs/reference/examples-2432s028/scheduler/` |
 
 ## Check that a method exists
 
 Before you write a call, list the methods of the receiver's class. **If a method
 is not in the list, it does not exist.** Never write one from memory.
+
+Use the MCP server of the device: `picoruby-ti` for the Cardputer,
+`picoruby-ti-2432s028` for the 2432S028. Only the 2432S028's knows `Touch` and
+the window methods of `Display`.
 
 | picoruby-ti MCP tool | Use |
 |---|---|
@@ -57,8 +97,9 @@ path from your machine is not found: the server runs in a container. `line` and
 - `methods` on a class of your own leaves out each method whose return type it
   cannot work out. Read your own code for those.
 
-If the MCP tools are not connected, read `docs/reference/sig/*.rbs`, which is what
-they are built from.
+If the MCP tools are not connected, read `docs/reference/sig/*.rbs`
+(2432S028: `docs/reference/sig-2432s028/*.rbs`), which is what they are built
+from.
 
 ## App files
 
@@ -89,16 +130,17 @@ classes. Both lists keep the same order.
 
 ### Split by role
 
-Each file is compiled on its own, in the same 100 KB of memory the VM uses, so an
-app grows by adding files to the manifests. Split by role (constants, input,
+Each file is compiled on its own, in the same memory the VM uses: 100 KB on the
+Cardputer, 80 KB on the 2432S028. An app grows by adding files to the manifests. Split by role (constants, input,
 logic, drawing, saving, `main`) and keep each file the size of the apps that ship
 with Area512: their largest is 165 lines with 14 methods, and `solitair` is 11
 files. A file far denser than that does not give a compile error: **the device
-crashes with "Out of memory"**.
+crashes with "Out of memory"**. The 2432S028 has 20 KB less, so keep its files
+and data smaller than the Cardputer's.
 
 ### Hand off to another app
 
-When one app cannot fit in the 100 KB, even split by role, split it into apps
+When one app cannot fit in the memory, even split by role, split it into apps
 and switch between them with `Area512.run_next(path)`: when the current app
 returns, the file manager runs `path` right away, such as `/home/apps/<name>-battle`.
 Pass what the next app needs through a file under `/data` with `SD.write`, and
@@ -113,13 +155,14 @@ Most built-ins need a `require`:
 | `Display`, `Sprite`, `BandedSprite` | `'area512-sprite'` |
 | `Widget`, `WidgetList`, `WidgetTextView` | `'area512-widget'` |
 | `Dot` | `'area512-dot'` |
+| `Touch` (2432S028) | `'area512-touch'` |
 | `RNG` | `'rng'` |
 | `STDIN.raw`, `getch`, `read_nonblock` | `'io/console'` |
 | `GPIO` / `I2C` / `SPI` / `ADC` | `'gpio'` / `'i2c'` / `'spi'` / `'adc'` |
 | `Time` | `'time'` |
 | `Machine`, `SD`, `File`, `Dir`, `Sandbox` | Loaded already |
 
-### The device
+### The Cardputer
 
 - The screen is 240x135. `Display.width` and `Display.height` give it.
 - There is no mouse or touch, and arrow keys need Fn. Prefer `h j k l` or
@@ -134,6 +177,42 @@ Most built-ins need a `require`:
   under `/data`. `File` cannot write.
 - Put constants under your class with `unless const_defined?(:NAME)`, as
   `apps/snake/const.rb` does: runs share one VM.
+
+### The 2432S028
+
+What is not listed here is as on the Cardputer: drawing, files, `/data`, one VM.
+
+- The app draws in a 240x135 window, as on the Cardputer: `Display.width` and
+  `Display.height` are 240 and 135. The screen around it is 320x240, and the
+  file manager's frame stays around the window.
+- There is no keyboard. The person touches the screen, so every action needs a
+  place to tap: a button, or a spot on the app's own board.
+- Put the app's commands in **a column of buttons right of the window**, as every
+  app that ships for the 2432S028 does:
+  1. Copy `touch_button_column.rb` from `docs/reference/examples-2432s028/bomb/`
+     and change its class to yours. Add it to both manifests before the files
+     that use it.
+  2. At the start of `run`, move the window left so the column fits:
+     `Display.move_window(12, Display.read_window_top_without_soft_keyboard)`,
+     then `push_touch_button_column(-1)`.
+  3. `show_touch_button_column(["FLAG", "NEW", "QUIT"])` draws the buttons, top
+     to bottom. `set_touch_button_on(index, true)` lights one, for a mode such as
+     FLAG. A label fits 8 letters; the shipped apps use 1 to 5 buttons, and
+     `scheduler/touch.rb` shows another set on each screen.
+  4. Always have a QUIT button: there is no Esc key.
+- Read touches with `read_touch_event` from that file, in the loop where a
+  Cardputer app reads keys. It returns `nil` when nothing happened,
+  `["BUTTON", index, 0]` for a button, and otherwise the event of `Touch.read`:
+  `["TAP", x, y]`, `["DRAG", x, y]` while a finger moves, `["RELEASE", x, y]`
+  when it lifts. `x` and `y` are in window coordinates, the ones you draw with.
+  Sleep 10 ms with `sleep_ms` between reads. `bomb/io.rb` turns a tap into the
+  cell under it, and `paint/io.rb` draws while dragging.
+- For typing, `Touch.open_keyboard` shows the soft keyboard below the window
+  and moves the window up; `Touch.close_keyboard` hides it. Draw the app again
+  after either. The keys arrive on `STDIN`, read with `STDIN.read_nonblock(1)`
+  in `STDIN.raw`. `writer/touch.rb` has a `Kbd` button that opens and closes
+  it, and `run_with_soft_keyboard`, which keeps it open only around a
+  `Widget.input` (`writer/files.rb`).
 
 ### Python
 
@@ -231,6 +310,27 @@ run mygame
 `compile --all` stops at the first error. A Ruby error while an app runs is shown
 on the screen.
 
+### The 2432S028 emulator
+
+Run the same commands in `emulator-browser-2432s028`. Coordinates are screen
+pixels of the 320x240 screenshot, not window coordinates: take a screenshot and
+tap where you see the button.
+
+```sh
+docker compose exec -T emulator-browser-2432s028 area512 tap 280 60
+docker compose exec -T emulator-browser-2432s028 area512 drag 40 100 200 100
+```
+
+- `tap X Y` touches the screen briefly. `drag X1 Y1 X2 Y2` moves a finger from
+  one point to the other.
+- `type` and `key` send what the soft keyboard would, without drawing it, and
+  work also while it is closed. `key` has `enter`, `backspace`, `tab`,
+  `space`, `esc`, `up`, `down`, `left`, `right`, characters, and `ctrl+` a key.
+  There is no `fn`, `shift`, `opt` or `alt`.
+- `key t` in the file list opens the terminal, as tapping `TRM` does.
+
+### What the emulator does not have
+
 The emulator has no Bluetooth or app images, and `recv` does nothing. Pins keep what you write
 to them, and I2C and SPI answer nothing. Timing is not the device's: check speed on
 the device.
@@ -240,7 +340,8 @@ the device.
 Unless the person asks for more, a light check is enough:
 
 1. Compile and run the app. `compile --all` must succeed.
-2. Press the keys of its main action.
+2. Press the keys of its main action. On the 2432S028, tap its buttons and its
+   board instead.
 3. Look at one screenshot, and run `area512 errors`.
 
 Stop there and report. Do not play it to the end, repeat runs or write a bot.
@@ -269,6 +370,10 @@ export default async function run(emulator) {
 }
 ```
 
+On the 2432S028, `emulator.tap(x, y)` and `emulator.drag(x1, y1, x2, y2)` touch
+the screen in screen pixels, and `readScreen` reads the 320x240 screen. Run the
+bot in `emulator-browser-2432s028`.
+
 ```sh
 docker compose exec -T emulator-browser area512 bot bots/mygame.mjs
 ```
@@ -282,6 +387,10 @@ A bot should cover what the person asked to test, check each result on the scree
 and use the colors of your `render`. A panel can hide what is under it, and the
 screen can be read in the middle of a redraw.
 
+Never leave `puts`, `print`, `p`, `pp` or `printf` in an app, not for debugging
+and not for a bot: what the app prints is drawn on the screen over its window,
+and the screen flickers. A bot reads results from the screen, not from `serial()`.
+
 ## Put it on the device
 
 You do this when the person asks for it. First ask the person to connect the
@@ -289,9 +398,13 @@ Cardputer by USB, press `t` in the file list for the terminal, type `recv` and p
 Enter. The Cardputer then shows "Receiving over USB. Esc to exit" and waits. Send
 only after that.
 
+For the 2432S028, ask the person to connect it by USB, tap `TRM` in the file list,
+type `recv` on the soft keyboard and tap `Enter`.
+
 ```sh
 docker compose run --rm compiler apps/mygame    # writes the .mrb files
 bin/area512-send-linux-amd64 apps/mygame        # sends the folder
+bin/area512-send-linux-amd64 --board 2432s028 apps/mygame   # to the 2432S028
 ```
 
 Run the tool for the computer you are on, outside Docker:
@@ -304,7 +417,8 @@ Run the tool for the computer you are on, outside Docker:
 
 The tool copies the app to `/home/apps/<name>`. If it reports several serial
 ports, pass the right one with `--port`. Then tell the person to open `/home/apps`,
-select the app and press `R`.
+select the app and press `R`. On the 2432S028, they select the app's folder and
+tap `RUN`.
 
 The person can also send an app by themselves from the emulator page in Chrome or
 Edge, under "Send to the device".

@@ -1,7 +1,9 @@
 FROM golang:1.26-trixie AS build
 
 ARG PICORUBY_TI_REF=main
-ARG AREA512_REF=main
+ARG AREA512_REF=cyd
+# picoruby for the Cardputer, picoruby_cyd for the ESP32-2432S028.
+ARG AREA512_SIG_DIR=picoruby
 
 RUN apt-get update \
   && apt-get install -y --no-install-recommends ruby \
@@ -21,7 +23,7 @@ RUN git clone --depth 1 --branch "$AREA512_REF" \
 
 WORKDIR /src/picoruby-ti
 
-RUN cp /src/area512/components/area512/sig/picoruby/*.rbs sig/ \
+RUN cp /src/area512/components/area512/sig/"$AREA512_SIG_DIR"/*.rbs sig/ \
   && make gendb \
   && make -C lsp build
 

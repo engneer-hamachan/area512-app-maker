@@ -16,6 +16,11 @@ size_t heap_caps_get_total_size(uint32_t capabilities);
 size_t heap_caps_get_free_size(uint32_t capabilities);
 size_t heap_caps_get_largest_free_block(uint32_t capabilities);
 void *heap_caps_malloc(size_t byte_size, uint32_t capabilities);
+void *heap_caps_aligned_alloc(
+  size_t alignment,
+  size_t byte_size,
+  uint32_t capabilities
+);
 void heap_caps_free(void *pointer);
 
 #ifdef __cplusplus

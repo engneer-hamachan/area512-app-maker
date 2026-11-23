@@ -285,6 +285,13 @@ heap_caps_malloc(size_t byte_size, uint32_t capabilities) {
   return malloc(byte_size);
 }
 
+void *
+heap_caps_aligned_alloc(size_t alignment, size_t byte_size, uint32_t capabilities) {
+  (void)capabilities;
+
+  return aligned_alloc(alignment, byte_size);
+}
+
 void
 heap_caps_free(void *pointer) {
   free(pointer);

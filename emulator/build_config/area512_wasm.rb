@@ -1,10 +1,21 @@
 # The gem set of components/area512/build_config/area512.rb, built with
 # Emscripten. Hardware ports are provided by emulator/port.
+#
+# AREA512_CYD and AREA512_CYD_2432S028 are ON for the ESP32-2432S028, as the
+# firmware's build sets them.
 area512_source_path = ENV.fetch('AREA512_SOURCE_PATH')
 area512_component_path = "#{area512_source_path}/components/area512"
 picoruby_gems_path = "#{area512_source_path}/R2P2-ESP32/components/picoruby-esp32/picoruby/mrbgems"
+cyd_ti_generated_directory = ENV['AREA512_CYD_TI_GENERATED_DIR']
+is_cyd = ENV['AREA512_CYD'] == 'ON'
+is_cyd_2432s028 = ENV['AREA512_CYD_2432S028'] == 'ON'
 
-MRuby::CrossBuild.new('wasm-femtoruby') do |conf|
+require "#{area512_component_path}/build_config/cyd_ti_database"
+
+# Build names match PICORUBY_BUILD in emulator/Makefile.
+build_name = is_cyd_2432s028 ? 'wasm-femtoruby-cyd-2432s028' : 'wasm-femtoruby'
+
+MRuby::CrossBuild.new(build_name) do |conf|
   conf.toolchain('clang')
 
   conf.cc.command = 'emcc'
@@ -31,6 +42,8 @@ MRuby::CrossBuild.new('wasm-femtoruby') do |conf|
   conf.cc.defines << 'NDEBUG'
   conf.cc.defines << 'MAX_SYMBOLS_COUNT=2000'
   conf.cc.defines << 'TI_ARENA_SIZE=24576'
+  conf.cc.defines << 'AREA512_CYD' if is_cyd
+  conf.cc.defines << 'AREA512_CYD_2432S028' if is_cyd_2432s028
   conf.femtoruby(alloc_libc: false)
 
   conf.gem gemdir: "#{picoruby_gems_path}/mruby-compiler2"
@@ -56,8 +69,18 @@ MRuby::CrossBuild.new('wasm-femtoruby') do |conf|
   conf.gem gemdir: "#{area512_component_path}/mrbgems/picoruby-area512-compile"
   conf.gem gemdir: "#{area512_component_path}/mrbgems/picoruby-area512-micropython"
 
-  conf.gem gemdir: "#{area512_component_path}/mrbgems/picoruby-ti"
-  conf.gem gemdir: "#{area512_component_path}/mrbgems/micropython-ti"
+  conf.gem gemdir: "#{area512_component_path}/mrbgems/picoruby-ti" do |spec|
+    if cyd_ti_generated_directory
+      use_cyd_ti_database(spec, "#{cyd_ti_generated_directory}/picoruby")
+    end
+  end
+
+  conf.gem gemdir: "#{area512_component_path}/mrbgems/micropython-ti" do |spec|
+    if cyd_ti_generated_directory
+      use_cyd_ti_database(spec, "#{cyd_ti_generated_directory}/micropython")
+    end
+  end
+
   conf.gem gemdir: "#{area512_component_path}/mrbgems/picoruby-area512-edit"
 
   conf.gem gemdir: "#{picoruby_gems_path}/picoruby-rng"
@@ -68,6 +91,11 @@ MRuby::CrossBuild.new('wasm-femtoruby') do |conf|
   conf.gem gemdir: "#{area512_component_path}/mrbgems/picoruby-area512-sprite"
   conf.gem gemdir: "#{area512_component_path}/mrbgems/picoruby-area512-quaternary-sprite"
   conf.gem gemdir: "#{area512_component_path}/mrbgems/picoruby-area512-widget"
+
+  if is_cyd
+    conf.gem gemdir: "#{area512_component_path}/mrbgems/picoruby-area512-touch"
+  end
+
   conf.gem gemdir: "#{area512_component_path}/mrbgems/picoruby-area512-dot"
   conf.gem gemdir: "#{area512_component_path}/mrbgems/picoruby-area512-console"
   conf.gem gemdir: "#{area512_component_path}/mrbgems/picoruby-area512-repl"

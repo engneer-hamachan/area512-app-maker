@@ -1,6 +1,5 @@
 // What `area512` commands and bot scripts use to operate the emulator.
 const CONTROL_URL = 'http://127.0.0.1:9000';
-const SCREEN_WIDTH = 240;
 const BROWSER_START_TIMEOUT_MILLISECONDS = 90000;
 const BROWSER_START_RETRY_MILLISECONDS = 500;
 const SCREENSHOT_DIRECTORY = '/workspace/screenshots';
@@ -50,11 +49,12 @@ async function key(...keyArguments) {
 
 // The screen at this moment: pixel(x, y) gives [red, green, blue].
 async function readScreen() {
-  const rgbaBytes = Buffer.from(await sendCommand({ command: 'pixels' }), 'base64');
+  const { screenWidth, rgbaBase64 } = JSON.parse(await sendCommand({ command: 'pixels' }));
+  const rgbaBytes = Buffer.from(rgbaBase64, 'base64');
 
   return {
     pixel(x, y) {
-      const byteOffset = (y * SCREEN_WIDTH + x) * 4;
+      const byteOffset = (y * screenWidth + x) * 4;
 
       return [rgbaBytes[byteOffset], rgbaBytes[byteOffset + 1], rgbaBytes[byteOffset + 2]];
     },
@@ -81,11 +81,24 @@ async function compileAndRunApp(appName, compileMilliseconds = 3000) {
   await sleep(APP_START_DELAY_MILLISECONDS);
 }
 
+// A touch of the 2432S028's screen, in screen pixels.
+function tap(touchScreenX, touchScreenY) {
+  return sendCommand({ command: 'tap', touchScreenX, touchScreenY });
+}
+
+function drag(fromTouchScreenX, fromTouchScreenY, toTouchScreenX, toTouchScreenY) {
+  return sendCommand({
+    command: 'drag', fromTouchScreenX, fromTouchScreenY, toTouchScreenX, toTouchScreenY,
+  });
+}
+
 export const emulator = {
   key,
   sleep,
   readScreen,
   compileAndRunApp,
+  tap,
+  drag,
   type: (text) => sendCommand({ command: 'type', text }),
   screenshot: (name) => sendCommand({
     command: 'screenshot',

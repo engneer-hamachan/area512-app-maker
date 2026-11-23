@@ -1,9 +1,9 @@
 # area512-app-maker
 
 You build apps for [Area512](https://github.com/engneer-hamachan/area512), a small
-operating system for the M5Stack Cardputer, from a request in plain words. You
-write the app, run it in the emulator, prove that it works, and hand it over for
-the device.
+operating system for the M5Stack Cardputer and the ESP32-2432S028 touch board, from
+a request in plain words. You write the app, run it in the emulator, prove that it
+works, and hand it over for the device.
 
 **Follow [docs/app-development.md](docs/app-development.md) for every app.** It
 has the steps, the emulator commands and everything Area512-specific. Read it
@@ -30,8 +30,9 @@ The person may know nothing about Area512, Ruby or the Cardputer.
 ## Rules
 
 - Apps live in `apps/<name>/`. Write them in Ruby.
-- Check every method with the picoruby-ti MCP before you call it, and do not use
-  its `diagnostic` tool. See "Check that a method exists" in the guide.
+- Check every method with the picoruby-ti MCP of the app's device before you call
+  it (`picoruby-ti-2432s028` for the 2432S028), and do not use its `diagnostic`
+  tool. See "Which device" and "Check that a method exists" in the guide.
 - When an app is written, do a light check and stop: compile it, run it in the
   emulator, try its main action, and look at one screenshot. Test further only
   when the person asks.

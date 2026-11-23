@@ -6,3 +6,10 @@ args = ["compose", "--progress", "quiet", "run", "--rm", "-T", "picoruby-ti-mcp"
 disabled_tools = ["diagnostic"]
 # These tools only read the project.
 default_tools_approval_mode = "approve"
+
+# The same type checker with the ESP32-2432S028's classes, such as Touch.
+[mcp_servers.picoruby-ti-2432s028]
+command = "docker"
+args = ["compose", "--progress", "quiet", "run", "--rm", "-T", "picoruby-ti-mcp-2432s028"]
+disabled_tools = ["diagnostic"]
+default_tools_approval_mode = "approve"

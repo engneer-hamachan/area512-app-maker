@@ -1,5 +1,17 @@
 {
   "permissions": {
-    "deny": ["mcp__picoruby-ti__diagnostic"]
+    "allow": [
+      "Bash(docker compose *)",
+      "Bash(mkdir -p workflow-runs/*)",
+      "Bash(curl -fsSL --max-filesize 5000000 -o workflow-runs/*)",
+      "WebSearch",
+      "WebFetch",
+      "Edit(apps/**)",
+      "Edit(bots/**)",
+      "Edit(workflow-runs/**)",
+      "mcp__picoruby-ti",
+      "mcp__picoruby-ti-2432s028"
+    ],
+    "deny": ["mcp__picoruby-ti__diagnostic", "mcp__picoruby-ti-2432s028__diagnostic"]
   }
 }

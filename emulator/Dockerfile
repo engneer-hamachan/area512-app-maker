@@ -7,7 +7,9 @@ RUN apt-get update \
 
 FROM wasm-tools AS wasm-build
 
-ARG AREA512_REF=main
+ARG AREA512_REF=cyd
+# cardputer (the Cardputer ADV) or 2432s028 (the ESP32-2432S028).
+ARG AREA512_BOARD=cardputer
 
 WORKDIR /src
 
@@ -30,13 +32,17 @@ COPY port /src/emulator/port
 
 RUN AREA512_SOURCE_PATH=/src/area512 \
     AREA512_EMULATOR_OUTPUT_PATH=/build \
+    AREA512_BOARD="$AREA512_BOARD" \
     sh /src/emulator/build.sh
 
 FROM python:3.13-slim
 
+ARG AREA512_BOARD=cardputer
+
 COPY --from=wasm-build /build/web /srv/emulator/web
 COPY --from=wasm-build /src/area512/R2P2-ESP32/components/picoruby-esp32/picoruby/build/host/bin/picorbc /usr/local/bin/picorbc
-COPY web /srv/emulator/web
+COPY web/common /srv/emulator/web
+COPY web/${AREA512_BOARD} /srv/emulator/web
 COPY server.py compile_app.sh /srv/emulator/
 
 EXPOSE 8080

@@ -1,8 +1,9 @@
-// Sends an app to a Cardputer waiting in Area512's receive mode, over Web Serial.
+// Sends an app to a device waiting in Area512's receive mode, over Web Serial.
 // The protocol is the device side of components/area512_hal/usb/area512_usb_receive.c.
+// The board's transfer_settings.js, loaded before this one, defines
+// transferSettings.
 'use strict';
 
-const ESPRESSIF_USB_VENDOR_ID = 0x303a;
 const SERIAL_BAUD_RATE = 115200;
 const DEVICE_APPS_PATH = '/home/apps';
 const REPLY_PREFIX = 'AREA512 ';
@@ -91,7 +92,7 @@ async function waitForReady(lineReader) {
     const line = await lineReader.readLine(deadline);
 
     if (line === null) {
-      throw new Error('The Cardputer is not receiving. Press t in the file list, type recv and press Enter.');
+      throw new Error(`The ${transferSettings.deviceName} is not receiving. ${transferSettings.receiveInstructions}`);
     }
 
     if (line === REPLY_PREFIX + READY_REPLY) {
@@ -107,7 +108,7 @@ async function expectOk(lineReader, devicePath) {
     const line = await lineReader.readLine(deadline);
 
     if (line === null) {
-      throw new Error(`${devicePath}: no reply from the Cardputer`);
+      throw new Error(`${devicePath}: no reply from the ${transferSettings.deviceName}`);
     }
 
     if (!line.startsWith(REPLY_PREFIX) || line === REPLY_PREFIX + READY_REPLY) {
@@ -172,6 +173,10 @@ async function sendAppFiles(port, appName, deviceFiles, reportProgress) {
   const appDevicePath = `${DEVICE_APPS_PATH}/${appName}`;
 
   await port.open({ baudRate: SERIAL_BAUD_RATE });
+
+  if (transferSettings.isResetSignalLoweredAfterOpen) {
+    await port.setSignals({ requestToSend: false, dataTerminalReady: false });
+  }
 
   const session = {
     writer: port.writable.getWriter(),
@@ -243,7 +248,7 @@ async function setUpTransfer() {
     try {
       // requestPort must run first: it needs the click that started this.
       const port = await navigator.serial.requestPort({
-        filters: [{ usbVendorId: ESPRESSIF_USB_VENDOR_ID }],
+        filters: transferSettings.usbVendorIds.map((usbVendorId) => ({ usbVendorId })),
       });
 
       reportProgress(`Compiling ${appName}…`);
@@ -251,7 +256,7 @@ async function setUpTransfer() {
       const deviceFiles = await fetchDeviceFiles(appName);
 
       await sendAppFiles(port, appName, deviceFiles, reportProgress);
-      reportProgress(`Sent. On the Cardputer, open /home/apps, select ${appName} and press R.`);
+      reportProgress(`Sent. On the ${transferSettings.deviceName}, ${transferSettings.runInstructions(appName)}.`);
     } catch (error) {
       reportProgress(error.message);
     } finally {

@@ -10,6 +10,12 @@ const EMULATOR_URL = process.env.AREA512_EMULATOR_URL ?? 'http://emulator:8080';
 const CONTROL_PORT = 9000;
 const BOOT_TIMEOUT_MILLISECONDS = 60000;
 const CONNECTION_RETRY_MILLISECONDS = 500;
+// The firmware reads the touch panel every 10 ms and ends a touch after 3 reads
+// without it, or a drag after 6.
+const TOUCH_HOLD_MILLISECONDS = 60;
+const TOUCH_END_MILLISECONDS = 100;
+const DRAG_STEP_MILLISECONDS = 20;
+const DRAG_STEP_COUNT = 10;
 
 // SharedArrayBuffer needs a secure origin, which http://emulator:8080 is not.
 const browser = await chromium.launch({
@@ -25,6 +31,29 @@ page.on('console', (message) => {
     pageErrors.push(message.text());
   }
 });
+
+const sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
+
+async function requireTouchScreen() {
+  const isTouchScreen = await page.evaluate(() => 'pressTouch' in window.area512Emulator);
+
+  if (!isTouchScreen) {
+    throw new Error('this board has no touch screen');
+  }
+}
+
+function pressTouch(touchScreenX, touchScreenY) {
+  return page.evaluate(
+    ([pressedTouchScreenX, pressedTouchScreenY]) =>
+      window.area512Emulator.pressTouch(pressedTouchScreenX, pressedTouchScreenY),
+    [touchScreenX, touchScreenY],
+  );
+}
+
+async function releaseTouch() {
+  await page.evaluate(() => window.area512Emulator.releaseTouch());
+  await sleep(TOUCH_END_MILLISECONDS);
+}
 
 async function openEmulator() {
   const deadline = Date.now() + BOOT_TIMEOUT_MILLISECONDS;
@@ -64,6 +93,32 @@ const commandHandlers = {
 
     return '';
   },
+  async tap({ touchScreenX, touchScreenY }) {
+    await requireTouchScreen();
+    await pressTouch(touchScreenX, touchScreenY);
+    await sleep(TOUCH_HOLD_MILLISECONDS);
+    await releaseTouch();
+
+    return '';
+  },
+  async drag({ fromTouchScreenX, fromTouchScreenY, toTouchScreenX, toTouchScreenY }) {
+    await requireTouchScreen();
+    await pressTouch(fromTouchScreenX, fromTouchScreenY);
+    await sleep(TOUCH_HOLD_MILLISECONDS);
+
+    for (let stepIndex = 1; stepIndex <= DRAG_STEP_COUNT; stepIndex++) {
+      await pressTouch(
+        Math.round(fromTouchScreenX + (toTouchScreenX - fromTouchScreenX) * stepIndex / DRAG_STEP_COUNT),
+        Math.round(fromTouchScreenY + (toTouchScreenY - fromTouchScreenY) * stepIndex / DRAG_STEP_COUNT),
+      );
+      await sleep(DRAG_STEP_MILLISECONDS);
+    }
+
+    await sleep(TOUCH_HOLD_MILLISECONDS);
+    await releaseTouch();
+
+    return '';
+  },
   async type({ text }) {
     await page.evaluate((typedText) => window.area512Emulator.typeText(typedText), text);
 
@@ -79,7 +134,10 @@ const commandHandlers = {
     return `${outputPath}\n`;
   },
   async pixels() {
-    return page.evaluate(() => window.area512Emulator.screenRgbaBase64());
+    return JSON.stringify(await page.evaluate(() => ({
+      screenWidth: window.area512Emulator.screenWidth,
+      rgbaBase64: window.area512Emulator.screenRgbaBase64(),
+    })));
   },
   async serial() {
     return page.evaluate(() => window.area512Emulator.serialOutput());
