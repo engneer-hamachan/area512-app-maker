@@ -7,7 +7,7 @@ export const meta = {
     { title: 'Plan', detail: 'turn each line of the definition into pass conditions' },
     { title: 'References', detail: 'find reference images on the web' },
     { title: 'Build', detail: 'write the app' },
-    { title: 'Capture', detail: 'play the app in the emulator and keep the evidence' },
+    { title: 'Capture', detail: 'play the app in the emulator and keep the evidence (full, or focused on what the last fix changed)' },
     { title: 'Audit', detail: 'game-play audit and visual audit' },
     { title: 'Fix', detail: 'fix what failed' },
   ],
@@ -54,6 +54,9 @@ const appDirectory = `apps/${appName}`
 const runDirectory = `workflow-runs/${appName}`
 const referenceDirectory = `${runDirectory}/references`
 const botPath = `bots/${appName}.mjs`
+// Capture copies the app here at the end of each round, so that the next
+// round can see exactly which files the fix changed.
+const capturedAppDirectory = (round) => `${runDirectory}/captured-app-r${round}`
 const emulatorCommandPrefix = `docker compose exec -T ${boardSettings.emulatorService} area512`
 
 // Workflow stops launching agents at 1000. Each round launches 4, so stop a
@@ -181,13 +184,17 @@ const CAPTURE_SCHEMA = {
   required: ['compileSucceeded', 'plays', 'evidence'],
   properties: {
     compileSucceeded: { type: 'boolean' },
+    changedFiles: { type: 'array', items: { type: 'string' }, description: 'Focused rounds: the app files that differ from the copy of the last round' },
+    fullCriteria: { type: 'array', items: { type: 'string' }, description: 'Focused rounds: the criterion ids checked in full this round' },
+    quickCriteria: { type: 'array', items: { type: 'string' }, description: 'Focused rounds: the criterion ids given only a quick check this round' },
+    affectedReasons: { type: 'string', description: 'Focused rounds: why each changed file does or does not touch each criterion' },
     plays: {
       type: 'array',
       items: {
         type: 'object',
         required: ['style', 'lastedSeconds', 'result', 'screenshotPaths'],
         properties: {
-          style: { type: 'string', enum: ['best', 'random', 'idle'] },
+          style: { type: 'string', enum: ['best', 'random', 'idle', 'quick'] },
           lastedSeconds: { type: 'number' },
           result: { type: 'string' },
           screenshotPaths: { type: 'array', items: { type: 'string' } },
@@ -307,20 +314,13 @@ ${describeReferences(references)}
 - Finish with the guide's light check. Do not write a bot.`
 }
 
-function capturePrompt(criteria, round, evidenceRequests) {
+function capturePrompt(criteria, round, evidenceRequests, focus) {
   const screenshotPrefix = `${appName}-r${round}-`
   const requestNote = evidenceRequests.length === 0
     ? ''
-    : `\n6. The auditors asked for this evidence last round. Get it:\n${evidenceRequests.join('\n')}\n`
-  return `${COMMON_RULES}
-
-Play the app in the emulator and keep the evidence the auditors need. You are the only step using the emulator now. Do not change \`${appDirectory}/\`.
-
-1. \`${emulatorCommandPrefix} reboot\`, then compile and start the app as the guide says. If it does not compile or crashes, keep a screenshot and the \`errors\` output as evidence for B1, and finish.
-2. Write or update the bot \`${botPath}\`. See "Test deeper with a bot" in the guide and \`bots/snake.mjs\`. It plays the way a person would and gathers the evidence of every criterion's "check" below. It reads everything from the screen with \`readScreen\` and screenshots; it never uses \`serial()\` as evidence, because the app prints nothing. It prints counts and values with console.log, which \`${emulatorCommandPrefix} bot ${botPath}\` shows. Name every screenshot starting with \`${screenshotPrefix}\`, so that it lands in \`screenshots/${screenshotPrefix}*.png\`.
-3. Also play three times, one after another, each until the game ends or 3 minutes pass: "best" (the bot plays as well as it can), "random" (random valid inputs as fast as possible), "idle" (no input). Keep screenshots at the start, middle and end of each, and the \`${emulatorCommandPrefix} errors\` and \`${emulatorCommandPrefix} serial\` output after each.
-4. For B3, on every screen of the app, have the bot take bursts of 20 screenshots back to back with no sleep between them (\`${screenshotPrefix}burst-<screen>-<idle|play>-<nn>\`), once with no input and once while playing. Then, for each burst, print the box of pixels that changed between each pair of frames, and make one contact sheet:
-   \`docker compose run --rm --entrypoint python3 assets -c "import sys
+    : `\nThe auditors asked for this evidence last round. Get it, in full, whatever the mode:\n${evidenceRequests.join('\n')}\n`
+  const snapshotStep = `Last, copy the app as you captured it, for the next round: \`rm -rf ${capturedAppDirectory(round)} && cp -r ${appDirectory} ${capturedAppDirectory(round)}\`.`
+  const burstCommand = `docker compose run --rm --entrypoint python3 assets -c "import sys
 from PIL import Image, ImageChops
 paths = sys.argv[2:]
 frames = [Image.open(p).convert('RGB') for p in paths]
@@ -329,20 +329,57 @@ for index in range(len(frames) - 1):
 sheet = Image.new('RGB', (frames[0].width * 5, frames[0].height * ((len(frames) + 4) // 5)))
 for index, frame in enumerate(frames):
     sheet.paste(frame, ((index % 5) * frame.width, (index // 5) * frame.height))
-sheet.save(sys.argv[1])" screenshots/${screenshotPrefix}sheet-<screen>-<idle|play>.png <the 20 screenshots in order>\`
-   Look at every contact sheet yourself with Read. Report, as B3 evidence, the sheets, the changed boxes, and every frame that shows anything other than the app's own drawing.
-5. Enlarge every screenshot of this round 4 times, except the burst frames and the contact sheets, for the visual audit:
-   \`docker compose run --rm --entrypoint python3 assets -c "import sys
+sheet.save(sys.argv[1])" screenshots/${screenshotPrefix}sheet-<screen>-<idle|play>.png <the 20 screenshots in order>`
+  const enlargeCommand = `docker compose run --rm --entrypoint python3 assets -c "import sys
 from PIL import Image
 for p in sys.argv[1:]:
     i = Image.open(p)
-    i.resize((i.width * 4, i.height * 4), Image.NEAREST).save(p[:-4] + '-x4.png')" <screenshots>\`
+    i.resize((i.width * 4, i.height * 4), Image.NEAREST).save(p[:-4] + '-x4.png')" <screenshots>`
+
+  if (focus) {
+    return `${COMMON_RULES}
+
+This is a focused round. Last round the criteria ${focus.failedIds.join(', ')} failed, a fix changed the app, and every other criterion passed. Check in full what the fix could have changed, and give everything else only a quick check for regressions. You are the only step using the emulator now. Do not change \`${appDirectory}/\`.
+
+1. Find what changed, from the files, not from what anyone says: \`diff -rq ${capturedAppDirectory(focus.previousRound)} ${appDirectory}\`, then \`diff -u\` each changed \`.rb\` file and each changed data file (ignore \`.mrb\`). If \`${capturedAppDirectory(focus.previousRound)}\` does not exist, you cannot tell what changed: check every criterion in full, as step 4 says, and report every criterion in fullCriteria.
+2. Decide which criteria to check in full. Always: ${focus.failedIds.join(', ')}, B1 and B2. Add every criterion that a changed file could affect: read the diff and where the changed methods, constants and data are used (grep for them in \`${appDirectory}/\`). Code that every screen draws, such as a map, a frame, a font or shared layout, touches every criterion whose screen shows it. Changed game rules, data or saving touch the game criteria that use them. When in doubt, check it in full. Report these in fullCriteria, the rest in quickCriteria, and why in affectedReasons.
+3. \`${emulatorCommandPrefix} reboot\`, then compile and start the app as the guide says. If it does not compile or crashes, keep a screenshot and the \`errors\` output as evidence for B1, and finish.
+4. For each criterion in fullCriteria, gather its evidence exactly as its "check" says, using \`${botPath}\` (update it if needed; see "Test deeper with a bot" in the guide). This includes playing to the end, the best, random and idle plays, and the B3 bursts, but only where those criteria need them. For B3 bursts, on each screen in question, take 20 screenshots back to back (\`${screenshotPrefix}burst-<screen>-<idle|play>-<nn>\`) and run:
+   \`${burstCommand}\`
+5. Quick check for everything in quickCriteria, in a few minutes: one short play (\`quick\`) that goes through every screen of the app by the shortest route (start from a saved game or a fixed setup if the app has one), with one screenshot of each screen (\`${screenshotPrefix}quick-<screen>\`) and the \`errors\` and \`serial\` output at the end. Do not play to the end only for the quick check. For each quick criterion, give as evidence the quick screenshot of its screen and the path of its evidence from the round in which it last passed; the screenshots of earlier rounds are in \`screenshots/${appName}-r<round>-*\`.
+6. Enlarge every screenshot of this round 4 times, except the burst frames and the contact sheets:
+   \`${enlargeCommand}\`
 ${requestNote}
+${snapshotStep}
+
+Return the evidence of every criterion, full or quick, and say which in fullCriteria and quickCriteria. When you could not get it, say why in notCaptured; do not stop.
+
+Criteria:
+${describeCriteria(criteria)}`
+  }
+
+  return `${COMMON_RULES}
+
+Play the app in the emulator and keep the evidence the auditors need. This is a full round: check every criterion in full. You are the only step using the emulator now. Do not change \`${appDirectory}/\`.
+
+1. \`${emulatorCommandPrefix} reboot\`, then compile and start the app as the guide says. If it does not compile or crashes, keep a screenshot and the \`errors\` output as evidence for B1, and finish.
+2. Write or update the bot \`${botPath}\`. See "Test deeper with a bot" in the guide and \`bots/snake.mjs\`. It plays the way a person would and gathers the evidence of every criterion's "check" below. It reads everything from the screen with \`readScreen\` and screenshots; it never uses \`serial()\` as evidence, because the app prints nothing. It prints counts and values with console.log, which \`${emulatorCommandPrefix} bot ${botPath}\` shows. Name every screenshot starting with \`${screenshotPrefix}\`, so that it lands in \`screenshots/${screenshotPrefix}*.png\`.
+3. Also play three times, one after another, each until the game ends or 3 minutes pass: "best" (the bot plays as well as it can), "random" (random valid inputs as fast as possible), "idle" (no input). Keep screenshots at the start, middle and end of each, and the \`${emulatorCommandPrefix} errors\` and \`${emulatorCommandPrefix} serial\` output after each.
+4. For B3, on every screen of the app, have the bot take bursts of 20 screenshots back to back with no sleep between them (\`${screenshotPrefix}burst-<screen>-<idle|play>-<nn>\`), once with no input and once while playing. Then, for each burst, print the box of pixels that changed between each pair of frames, and make one contact sheet:
+   \`${burstCommand}\`
+   Look at every contact sheet yourself with Read. Report, as B3 evidence, the sheets, the changed boxes, and every frame that shows anything other than the app's own drawing.
+5. Enlarge every screenshot of this round 4 times, except the burst frames and the contact sheets, for the visual audit:
+   \`${enlargeCommand}\`
+${requestNote}
+6. ${snapshotStep}
+
 Return the evidence of every criterion. When you could not get it, say why in notCaptured; do not stop.
 
 Criteria:
 ${describeCriteria(criteria)}`
 }
+
+const quickAuditRule = `- Criteria listed in the evidence under quickCriteria passed last round and were given only a quick check this round, because the last fix did not touch them. For each, compare the quick screenshot with its evidence from the round it last passed. Pass when nothing it depends on has visibly changed for the worse and the quick play showed no error. If something did change, or you cannot tell, fail it with evidenceRequest asking for its full evidence; it is then checked in full next round.`
 
 function gameAuditPrompt(criteria, capture) {
   return `${COMMON_RULES}
@@ -355,6 +392,7 @@ For each criterion below, decide whether it passed.
 - For B2, run the grep yourself on \`${appDirectory}/*.rb\`. One printing call, or one line from the app in any \`serial\` output, is a fail. Evidence that came from what the app printed is not evidence: fail the criterion that rests on it, with evidenceRequest saying how to read it from the screen.
 - A bot's win rate is not enough on its own. Compare the "best", "random" and "idle" plays: if random inputs do as well as the best play, or doing nothing does not lose, the criteria about skill or challenge fail. If the start, middle and end look the same, the criteria about change fail.
 - For each fail, give fixHint: the cause in \`${appDirectory}/\`, with files and lines.
+${quickAuditRule}
 
 Criteria:
 ${describeCriteria(criteria)}
@@ -375,6 +413,7 @@ For each criterion below, decide whether it passed.
 - Any screenshot of any criterion that shows terminal text or debug text over the app fails B3 and that criterion.
 - Missing or unclear evidence is a fail, with evidenceRequest saying which screen Capture must record next time.
 - For each fail, give fixHint: what to change, with files and lines in \`${appDirectory}/\` and colors in hex.
+${quickAuditRule}
 
 Reference images:
 ${describeReferences(references)}
@@ -403,6 +442,7 @@ Change the app so that the failed criteria below pass, without breaking the ones
 
 - Change only \`${appDirectory}/\`. Do not change the criteria, \`${botPath}\` or \`${runDirectory}/plan.md\`.
 - Look at the evidence files with Read before you change anything.
+- A fail whose auditor only asks for evidence (evidenceRequest) and finds no fault in the app needs no change to the app; leave it to Capture.
 - Never add \`puts\`, \`print\`, \`p\`, \`pp\` or \`printf\` to the app, not even for a while. Remove any you find.
 - Check every method with the MCP before you call it. Keep each file the size the guide gives.
 - Finish with \`compile --all\` in the emulator.
@@ -482,6 +522,7 @@ Return what you ran and whether the file list was shown.`, { label: 'setup', pha
     fixHistory: {},
     evidenceRequests: [],
     previousRoundAllPassed: false,
+    nextRoundFull: true,
     lastVerdicts: [],
   }
 }
@@ -495,7 +536,17 @@ for (;;) {
   state.round++
   const round = state.round
 
-  const capture = await runAgentUntilResult(capturePrompt(state.criteria, round, state.evidenceRequests), { label: `capture r${round}`, phase: 'Capture', schema: CAPTURE_SCHEMA })
+  // A round is full when it is the first, when it confirms that everything
+  // passed, or when the last round had no verdicts to build on. Otherwise
+  // Capture checks in full only what the last fix could have changed.
+  const fullRound = state.nextRoundFull !== false || state.lastVerdicts.length === 0
+  const focus = fullRound ? null : {
+    previousRound: round - 1,
+    failedIds: state.lastVerdicts.filter((verdict) => !verdict.passed).map((verdict) => verdict.criterionId),
+  }
+  log(`round ${round}: ${fullRound ? 'full' : `focused on ${focus.failedIds.join(', ')}`}`)
+
+  const capture = await runAgentUntilResult(capturePrompt(state.criteria, round, state.evidenceRequests, focus), { label: `capture r${round}${fullRound ? '' : ' focused'}`, phase: 'Capture', schema: CAPTURE_SCHEMA })
 
   const gameCriteria = state.criteria.filter((criterion) => criterion.kind === 'game')
   const visualCriteria = state.criteria.filter((criterion) => criterion.kind === 'visual')
@@ -522,14 +573,18 @@ for (;;) {
   log(`round ${round}: ${verdicts.length - failedVerdicts.length}/${verdicts.length} passed`)
 
   if (failedVerdicts.length === 0) {
-    if (state.previousRoundAllPassed) {
+    // Finish only after a full round in which everything passed, following a
+    // round in which everything passed too.
+    if (fullRound && state.previousRoundAllPassed) {
       return { finished: true, rounds: round, ...state }
     }
-    // Every criterion passed. Capture and audit once more, without a fix, before finishing.
+    // Every criterion passed. Capture and audit once more, in full and without a fix, before finishing.
     state.previousRoundAllPassed = true
+    state.nextRoundFull = true
     continue
   }
   state.previousRoundAllPassed = false
+  state.nextRoundFull = false
 
   const fix = await runAgentUntilResult(fixPrompt(state.criteria, failedVerdicts, state.failStreaks, state.fixHistory, state.references), { label: `fix r${round}`, phase: 'Fix', schema: FIX_SCHEMA })
   for (const change of fix.changes) {
