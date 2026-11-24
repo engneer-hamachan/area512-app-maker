@@ -1,6 +1,6 @@
 ---
 name: area512-work-flow
-description: Make an Area512 game from a game definition file (game-definitions/*.md) without asking anything, then repeat audits of its game play and its look, and fixes, until every line of the definition passes. Use only when the person runs /area512-work-flow <definition file>.
+description: Make an Area512 game from a game definition file (game-definitions/*.md) without asking anything, then repeat audits of its game play and its look, and fixes, until every line of the definition passes, for at most five rounds. Use only when the person runs /area512-work-flow <definition file>.
 argument-hint: <definition file>
 ---
 
@@ -22,6 +22,7 @@ comments and take:
 | `## Board` | the text after `board:` |
 | `## Genre` | the first line of text |
 | `## Fun` | each line starting with `- ` that has text after it |
+| `## Play` | each line starting with `- ` that has text after it |
 | `## Look` | each line starting with `- ` that has text after it |
 
 Check them before starting. If one fails, say which, and stop. Do not fill it
@@ -30,7 +31,7 @@ in yourself.
 - The name starts with a lower-case letter and has only lower-case letters,
   digits and `_`.
 - The board is `cardputer` or `cyd`.
-- The genre has text. Fun and Look have at least one line each.
+- The genre has text. Fun, Play and Look have at least one line each.
 
 ## 2. Keep a copy of an existing app
 
@@ -53,6 +54,7 @@ Workflow({
     board: "<cardputer or cyd>",
     genre: "<genre>",
     funLines: ["<each Fun line>"],
+    playLines: ["<each Play line>"],
     visualLines: ["<each Look line>"]
   }
 })
@@ -72,6 +74,10 @@ steps use the emulator one at a time.
 
 Repeat until it returns `finished: true`.
 
+The run ends after 5 rounds even if criteria still fail (`args.maxRounds`
+changes the number). It then returns `roundLimitReached: true` and the failed
+verdicts in `unresolved`. Do not run it again for them: report them.
+
 ## 4. Report
 
 Write `workflow-runs/<name>/report.md` from the result:
@@ -82,6 +88,9 @@ Write `workflow-runs/<name>/report.md` from the result:
 - `defaultsTaken`, and the look lines without a reference image
   (`linesWithoutReference`)
 - the number of rounds
+- if `roundLimitReached` is true: each criterion in `unresolved`, with the
+  audit's reason and the changes the fixes tried (`fixHistory`), first in the
+  report and in your message to the person
 
 Then tell the person that it is done, where the report is, and how to try the
 app:

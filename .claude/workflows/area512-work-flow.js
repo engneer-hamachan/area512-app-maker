@@ -1,7 +1,7 @@
 export const meta = {
   name: 'area512-work-flow',
   description: 'Build an Area512 game from a definition file, then repeat game-play and visual audits and fixes until every criterion passes',
-  whenToUse: 'Started by the /area512-work-flow skill. Requires args {definitionPath, appName, board, genre, funLines, visualLines}. Pass {continuation} from an unfinished result to go on from where it stopped.',
+  whenToUse: 'Started by the /area512-work-flow skill. Requires args {definitionPath, appName, board, genre, funLines, playLines, visualLines}. Pass {continuation} from an unfinished result to go on from where it stopped.',
   phases: [
     { title: 'Setup', detail: 'build and start the emulator of the board' },
     { title: 'Plan', detail: 'turn each line of the definition into pass conditions' },
@@ -16,13 +16,15 @@ export const meta = {
 const ARGS = typeof args === 'string' ? JSON.parse(args) : args
 
 if (!ARGS || !ARGS.definitionPath || !ARGS.appName || !ARGS.board || !ARGS.genre) {
-  throw new Error('area512-work-flow requires args {definitionPath, appName, board, genre, funLines, visualLines}')
+  throw new Error('area512-work-flow requires args {definitionPath, appName, board, genre, funLines, playLines, visualLines}')
 }
 if (!/^[a-z][a-z0-9_]*$/.test(ARGS.appName)) {
   throw new Error(`appName must be lower-case letters, digits and _: ${JSON.stringify(ARGS.appName)}`)
 }
-if (!Array.isArray(ARGS.funLines) || ARGS.funLines.length === 0 || !Array.isArray(ARGS.visualLines) || ARGS.visualLines.length === 0) {
-  throw new Error('funLines and visualLines must each have at least one line')
+for (const key of ['funLines', 'playLines', 'visualLines']) {
+  if (!Array.isArray(ARGS[key]) || ARGS[key].length === 0) {
+    throw new Error(`${key} must have at least one line`)
+  }
 }
 
 const BOARD_SETTINGS = {
@@ -67,10 +69,16 @@ const AGENT_COUNT_PER_ROUND = 4
 const FAIL_STREAK_FOR_NEW_APPROACH = 3
 // Fix is shown only the latest changes of a criterion, so that its prompt does not grow every round.
 const EARLIER_CHANGE_COUNT_IN_FIX_PROMPT = 5
+// The run ends after this many rounds even if criteria still fail, so that a
+// criterion the app cannot meet (for example one blocked by the emulator)
+// does not loop forever. The failed criteria are returned as unresolved.
+const MAX_ROUNDS = Number(ARGS.maxRounds) > 0 ? Number(ARGS.maxRounds) : 5
 
 const funLineEntries = ARGS.funLines.map((text, index) => ({ lineId: `F${index + 1}`, kind: 'game', text }))
+// "Play" lines: the decisions, trade-offs and challenge of the game, apart from what it has and how it feels.
+const playLineEntries = ARGS.playLines.map((text, index) => ({ lineId: `P${index + 1}`, kind: 'game', text }))
 const visualLineEntries = ARGS.visualLines.map((text, index) => ({ lineId: `V${index + 1}`, kind: 'visual', text }))
-const definitionLineEntries = [...funLineEntries, ...visualLineEntries]
+const definitionLineEntries = [...funLineEntries, ...playLineEntries, ...visualLineEntries]
 
 const BUILT_IN_CRITERIA = [
   {
@@ -139,7 +147,7 @@ const PLAN_SCHEMA = {
         type: 'object',
         required: ['lineId', 'passCondition', 'howToCheck'],
         properties: {
-          lineId: { type: 'string', description: 'F1, V2, ... of the line this criterion covers' },
+          lineId: { type: 'string', description: 'F1, P1, V2, ... of the line this criterion covers' },
           passCondition: { type: 'string' },
           howToCheck: { type: 'string' },
         },
@@ -276,6 +284,7 @@ ${missingNote}
    - passCondition: what must be seen in the emulator, so that two auditors would agree. Use what a bot can count by reading the screen, or features a screenshot shows. Never "is fun" or "looks good". Never a condition that needs the app to print or log anything: the app prints nothing.
    - howToCheck: what the Capture step does in the emulator to get that evidence: bot actions, when to take screenshots, what to count.
    Every condition must be possible on this board, and must not depend on exact speed: the emulator's timing is not the device's.
+3. Lines starting with P are about play: the choices the player makes, what each costs, and how hard the game is. Having a feature is never enough for them. Their criteria compare plays: the bot's best play against random keys and against doing nothing, and two or more different strategies against each other (for example, two choices at the same price must lead to different results that each pay off somewhere). Write in plan.md, for each P line, the rule that makes it true, and give the bot the strategies to compare.
 
 Lines:
 ${describeLines(definitionLineEntries)}`
@@ -391,6 +400,7 @@ For each criterion below, decide whether it passed.
 - Look at the screenshots yourself with Read. Read \`${botPath}\` to check that it measured what the evidence claims.
 - For B2, run the grep yourself on \`${appDirectory}/*.rb\`. One printing call, or one line from the app in any \`serial\` output, is a fail. Evidence that came from what the app printed is not evidence: fail the criterion that rests on it, with evidenceRequest saying how to read it from the screen.
 - A bot's win rate is not enough on its own. Compare the "best", "random" and "idle" plays: if random inputs do as well as the best play, or doing nothing does not lose, the criteria about skill or challenge fail. If the start, middle and end look the same, the criteria about change fail.
+- A criterion from a P line (play) passes only on a comparison of plays. That a choice exists is never enough: if one option is better in every case, or the strategies the plan compares end the same way, it fails.
 - For each fail, give fixHint: the cause in \`${appDirectory}/\`, with files and lines.
 ${quickAuditRule}
 
@@ -582,6 +592,17 @@ for (;;) {
     continue
   }
   state.nextRoundFull = false
+
+  if (round >= MAX_ROUNDS) {
+    log(`round limit ${MAX_ROUNDS} reached with ${failedVerdicts.map((verdict) => verdict.criterionId).join(', ')} failing; finishing`)
+    return {
+      finished: true,
+      roundLimitReached: true,
+      unresolved: failedVerdicts,
+      rounds: round,
+      ...state,
+    }
+  }
 
   const fix = await runAgentUntilResult(fixPrompt(state.criteria, failedVerdicts, state.failStreaks, state.fixHistory, state.references), { label: `fix r${round}`, phase: 'Fix', schema: FIX_SCHEMA })
   for (const change of fix.changes) {

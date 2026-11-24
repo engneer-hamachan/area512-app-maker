@@ -3,7 +3,8 @@
 <!--
 Copy this file to game-definitions/<name>.md, fill it in, and start with
   /area512-work-flow game-definitions/<name>.md
-Once started, it does not stop until every line of "Fun" and "Look" passes.
+Once started, it does not stop until every line of "Fun", "Play" and "Look"
+passes, or after 5 rounds of fixes.
 Do not add reference images. The agent finds them on the web from "Look".
 -->
 
@@ -26,6 +27,22 @@ board:
 
 <!-- One item per line, each starting with "- ". What a player should feel when the game succeeds.
      The agent turns each line into a pass condition it can check by playing, before it builds. -->
+-
+
+## Play
+
+<!-- One item per line, each starting with "- ". At least one line: a game
+     without it tends to have every feature and nothing to decide.
+     Not what the game has, but what the player must decide and how hard it is:
+     - the choices, and what each one costs or gives up
+       (e.g. "two heroes at the same price are each better at something else")
+     - what makes a choice right in one case and wrong in another
+       (e.g. "the next attack is announced, and each kind needs a different defense")
+     - how hard it is, and how it gets harder
+       (e.g. "doing nothing loses by the 3rd wave; random keys lose by the 5th")
+     - what a skilled player does that a beginner does not
+     Each line is checked by comparing plays: the best play, random keys,
+     doing nothing, and different strategies. -->
 -
 
 ## Look
