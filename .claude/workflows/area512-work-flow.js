@@ -521,7 +521,6 @@ Return what you ran and whether the file list was shown.`, { label: 'setup', pha
     failStreaks: {},
     fixHistory: {},
     evidenceRequests: [],
-    previousRoundAllPassed: false,
     nextRoundFull: true,
     lastVerdicts: [],
   }
@@ -536,8 +535,8 @@ for (;;) {
   state.round++
   const round = state.round
 
-  // A round is full when it is the first, when it confirms that everything
-  // passed, or when the last round had no verdicts to build on. Otherwise
+  // A round is full when it is the first, when it follows a focused round
+  // that passed everything, or when the last round had no verdicts to build on. Otherwise
   // Capture checks in full only what the last fix could have changed.
   const fullRound = state.nextRoundFull !== false || state.lastVerdicts.length === 0
   const focus = fullRound ? null : {
@@ -573,17 +572,15 @@ for (;;) {
   log(`round ${round}: ${verdicts.length - failedVerdicts.length}/${verdicts.length} passed`)
 
   if (failedVerdicts.length === 0) {
-    // Finish only after a full round in which everything passed, following a
-    // round in which everything passed too.
-    if (fullRound && state.previousRoundAllPassed) {
+    // Finish as soon as a full round passes everything.
+    if (fullRound) {
       return { finished: true, rounds: round, ...state }
     }
-    // Every criterion passed. Capture and audit once more, in full and without a fix, before finishing.
-    state.previousRoundAllPassed = true
+    // A focused round passed everything, but only checked part of the app in
+    // full. Check everything in full once, without a fix, before finishing.
     state.nextRoundFull = true
     continue
   }
-  state.previousRoundAllPassed = false
   state.nextRoundFull = false
 
   const fix = await runAgentUntilResult(fixPrompt(state.criteria, failedVerdicts, state.failStreaks, state.fixHistory, state.references), { label: `fix r${round}`, phase: 'Fix', schema: FIX_SCHEMA })
