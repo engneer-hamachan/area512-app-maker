@@ -109,8 +109,8 @@ const BUILT_IN_CRITERIA = [
     lineId: 'B',
     kind: 'visual',
     auditOnly: true,
-    passCondition: 'No screenshot looks unnatural to a person who knows the real thing the game shows. What is nearer the viewer is drawn over what is behind it, lower on the screen and larger; sizes shrink with distance by the same rule for every object; objects stand where they would in reality and in the rules (a ball is where the player is about to touch it, feet stand on the ground, nothing floats, sinks into or passes through another object by mistake); light, shadows and proportions agree with each other. Any one thing a person would find odd at first glance fails, however well every other criterion passes. Example: a kicker seen from behind with the ball drawn farther away than the kicker, when the ball should be in front of the kicker\'s feet.',
-    howToCheck: 'No own capture: the auditor looks at every enlarged screenshot of the round (and the burst contact sheets) and checks depth order, scale, positions and contact against the real thing.',
+    passCondition: 'Nothing on any screen looks unnatural. Judge every screenshot as a person who knows the real thing the game shows would see it at first glance; any one thing that looks odd, wrong or out of place fails, however well every other criterion passes. This covers, among others: what is nearer the viewer drawn behind what is farther, or not lower and larger; sizes that do not shrink with distance by one rule; objects where they could not be in reality or in the rules (a ball not where the player is about to touch it, feet off the ground, things floating, sinking into or passing through each other); light, shadows, proportions or colors that disagree; motion that jumps, stops or bends where nothing makes it; text or parts that overlap, are cut off or cover what matters. The ball drawn farther away than a kicker seen from behind, when it should lie in front of the kicker\'s feet, is one example, not the whole rule.',
+    howToCheck: 'No own capture: the auditor looks at every enlarged screenshot of the round and every burst contact sheet, of every criterion, and lists each thing that looks unnatural.',
   },
 ]
 
@@ -129,6 +129,10 @@ const COMMON_RULES = `You are one step of an unattended workflow that makes the 
 - The definition is \`${ARGS.definitionPath}\`. Work files go in \`${runDirectory}/\`.
 - The app must never print: no \`puts\`, \`print\`, \`p\`, \`pp\` or \`printf\`, for debugging, for logging or for test evidence. What an app prints is drawn on the screen over the game and makes it flicker. Evidence comes only from the screen: screenshots and the bot's \`readScreen\`.
 - Nothing may flicker within one screen of the app. Text and parts that should stay on a screen are drawn every frame, in the same place.`
+
+// Not part of COMMON_RULES so that the steps already done in a run keep their
+// cached results; every step after the first capture is given it.
+const NATURAL_LOOK_RULE = `- An unnatural look is a fail, never a detail. Whatever a person who knows the real thing would find odd at first glance on any screen (what is in front of what, sizes against distance, where things stand and what touches what, light and proportions, motion, overlapping or cut-off text) fails the criterion of that screen (and B4, where B4 is judged), even when the pass condition is otherwise met.`
 
 const describeLines = (lineEntries) => lineEntries.map((entry) => `${entry.lineId}: ${entry.text}`).join('\n')
 
@@ -363,6 +367,8 @@ for p in sys.argv[1:]:
   if (focus) {
     return `${COMMON_RULES}
 
+${NATURAL_LOOK_RULE}
+
 This is a focused round. Last round the criteria ${focus.failedIds.join(', ')} failed, a fix changed the app, and every other criterion passed. Check in full what the fix could have changed, and give everything else only a quick check for regressions. You are the only step using the emulator now. Do not change \`${appDirectory}/\`.
 
 1. Find what changed, from the files, not from what anyone says: \`diff -rq ${capturedAppDirectory(focus.previousRound)} ${appDirectory}\`, then \`diff -u\` each changed \`.rb\` file and each changed data file (ignore \`.mrb\`). If \`${capturedAppDirectory(focus.previousRound)}\` does not exist, you cannot tell what changed: check every criterion in full, as step 4 says, and report every criterion in fullCriteria.
@@ -409,6 +415,7 @@ function gameAuditPrompt(criteria, capture) {
   return `${COMMON_RULES}
 
 You audit the game play. You did not make this app, and nothing that says it works is evidence: judge only from the evidence files, the bot and the code. Do not use the emulator. Do not change any file.
+${NATURAL_LOOK_RULE}
 
 For each criterion below, decide whether it passed.
 - Pass only when the evidence shows the pass condition directly. Missing or unclear evidence is a fail, with evidenceRequest saying what Capture must record next time.
@@ -430,6 +437,7 @@ function visualAuditPrompt(criteria, capture, references) {
   return `${COMMON_RULES}
 
 You audit the look. You did not make this app, and nothing that says it looks right is evidence: judge only from the screenshots, the reference images and the code. Do not use the emulator. Do not change any file.
+${NATURAL_LOOK_RULE}
 
 For each criterion below, decide whether it passed.
 - Open the enlarged screenshots (\`-x4.png\`) and the reference images with Read, and compare them side by side.
@@ -468,6 +476,7 @@ Change the app so that the failed criteria below pass, without breaking the ones
 
 - Change only \`${appDirectory}/\`. Do not change the criteria, \`${botPath}\` or \`${runDirectory}/plan.md\`.
 - Look at the evidence files with Read before you change anything.
+${NATURAL_LOOK_RULE} When you fix one unnatural thing, look at the whole screen again for others, and at the screens that share the drawing.
 - A fail whose auditor only asks for evidence (evidenceRequest) and finds no fault in the app needs no change to the app; leave it to Capture.
 - Never add \`puts\`, \`print\`, \`p\`, \`pp\` or \`printf\` to the app, not even for a while. Remove any you find.
 - Check every method with the MCP before you call it. Keep each file the size the guide gives.
