@@ -105,6 +105,7 @@ const BUILT_IN_CRITERIA = [
   {
     // Judged from every screenshot the other criteria already take, so it asks
     // Capture for nothing of its own (auditOnly) unless it failed last round.
+    // Every step gets the rule behind it in COMMON_RULES.
     criterionId: 'B4',
     lineId: 'B',
     kind: 'visual',
@@ -114,7 +115,7 @@ const BUILT_IN_CRITERIA = [
   },
 ]
 
-// Criteria the build and capture steps are given: an auditOnly criterion only
+// Criteria the capture step is given: an auditOnly criterion only
 // when Capture must gather evidence for it because it failed last round.
 const criteriaForCapture = (criteria, failedIds = []) =>
   criteria.filter((criterion) => !criterion.auditOnly || failedIds.includes(criterion.criterionId))
@@ -128,11 +129,8 @@ const COMMON_RULES = `You are one step of an unattended workflow that makes the 
 - To wait for a process you started in the background, wait on its PID (\`while kill -0 <pid>\`) or on a line it writes when it ends. Never wait with \`pgrep -f <text>\` or \`pkill -f\`: the text is also in your own command, so it matches itself and waits until the timeout.
 - The definition is \`${ARGS.definitionPath}\`. Work files go in \`${runDirectory}/\`.
 - The app must never print: no \`puts\`, \`print\`, \`p\`, \`pp\` or \`printf\`, for debugging, for logging or for test evidence. What an app prints is drawn on the screen over the game and makes it flicker. Evidence comes only from the screen: screenshots and the bot's \`readScreen\`.
-- Nothing may flicker within one screen of the app. Text and parts that should stay on a screen are drawn every frame, in the same place.`
-
-// Not part of COMMON_RULES so that the steps already done in a run keep their
-// cached results; every step after the first capture is given it.
-const NATURAL_LOOK_RULE = `- An unnatural look is a fail, never a detail. Whatever a person who knows the real thing would find odd at first glance on any screen (what is in front of what, sizes against distance, where things stand and what touches what, light and proportions, motion, overlapping or cut-off text) fails the criterion of that screen (and B4, where B4 is judged), even when the pass condition is otherwise met.`
+- Nothing may flicker within one screen of the app. Text and parts that should stay on a screen are drawn every frame, in the same place.
+- An unnatural look is a fail, never a detail. Whatever a person who knows the real thing would find odd at first glance on any screen (what is in front of what, sizes against distance, where things stand and what touches what, light and proportions, motion, overlapping or cut-off text) fails the criterion of that screen (and B4, where B4 is judged), even when the pass condition is otherwise met.`
 
 const describeLines = (lineEntries) => lineEntries.map((entry) => `${entry.lineId}: ${entry.text}`).join('\n')
 
@@ -332,7 +330,7 @@ Write the app in \`${appDirectory}/\`, following steps 2 to 7 of docs/app-develo
 Plan: ${planSummary}
 
 It must meet every criterion below. Read them before you lay out the files.
-${describeCriteria(criteriaForCapture(criteria))}
+${describeCriteria(criteria)}
 
 Match these reference images; open each with Read:
 ${describeReferences(references)}
@@ -366,8 +364,6 @@ for p in sys.argv[1:]:
 
   if (focus) {
     return `${COMMON_RULES}
-
-${NATURAL_LOOK_RULE}
 
 This is a focused round. Last round the criteria ${focus.failedIds.join(', ')} failed, a fix changed the app, and every other criterion passed. Check in full what the fix could have changed, and give everything else only a quick check for regressions. You are the only step using the emulator now. Do not change \`${appDirectory}/\`.
 
@@ -415,7 +411,6 @@ function gameAuditPrompt(criteria, capture) {
   return `${COMMON_RULES}
 
 You audit the game play. You did not make this app, and nothing that says it works is evidence: judge only from the evidence files, the bot and the code. Do not use the emulator. Do not change any file.
-${NATURAL_LOOK_RULE}
 
 For each criterion below, decide whether it passed.
 - Pass only when the evidence shows the pass condition directly. Missing or unclear evidence is a fail, with evidenceRequest saying what Capture must record next time.
@@ -437,7 +432,6 @@ function visualAuditPrompt(criteria, capture, references) {
   return `${COMMON_RULES}
 
 You audit the look. You did not make this app, and nothing that says it looks right is evidence: judge only from the screenshots, the reference images and the code. Do not use the emulator. Do not change any file.
-${NATURAL_LOOK_RULE}
 
 For each criterion below, decide whether it passed.
 - Open the enlarged screenshots (\`-x4.png\`) and the reference images with Read, and compare them side by side.
@@ -476,7 +470,7 @@ Change the app so that the failed criteria below pass, without breaking the ones
 
 - Change only \`${appDirectory}/\`. Do not change the criteria, \`${botPath}\` or \`${runDirectory}/plan.md\`.
 - Look at the evidence files with Read before you change anything.
-${NATURAL_LOOK_RULE} When you fix one unnatural thing, look at the whole screen again for others, and at the screens that share the drawing.
+- When you fix one unnatural thing, look at the whole screen again for others, and at the screens that share the drawing.
 - A fail whose auditor only asks for evidence (evidenceRequest) and finds no fault in the app needs no change to the app; leave it to Capture.
 - Never add \`puts\`, \`print\`, \`p\`, \`pp\` or \`printf\` to the app, not even for a while. Remove any you find.
 - Check every method with the MCP before you call it. Keep each file the size the guide gives.
