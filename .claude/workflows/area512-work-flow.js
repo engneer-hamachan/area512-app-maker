@@ -102,7 +102,22 @@ const BUILT_IN_CRITERIA = [
     passCondition: 'Within one screen of the app, nothing flickers. In every burst of 20 screenshots taken back to back on one screen, every frame shows only the app\'s own drawing of that screen: no terminal text, no other app, no black or blank frame, no half-drawn frame. Between frames only what moves by design changes (the ball, flippers, lamps lit by play, the score); text, labels and parts that should stay never vanish and come back. Blinking is allowed only for an item listed under "Blinking" in plan.md as blinking by design. Switching to another app (run_next_app) is not within one screen and is not judged here.',
     howToCheck: 'On every screen of the app (each mode: before a game, during play, between balls, game over, and any other), take a burst of 20 screenshots back to back, once with no input and once while playing. For each burst, write the box of pixels that changed between each pair of frames, and make one contact sheet of the 20 frames for the auditor.',
   },
+  {
+    // Judged from every screenshot the other criteria already take, so it asks
+    // Capture for nothing of its own (auditOnly) unless it failed last round.
+    criterionId: 'B4',
+    lineId: 'B',
+    kind: 'visual',
+    auditOnly: true,
+    passCondition: 'No screenshot looks unnatural to a person who knows the real thing the game shows. What is nearer the viewer is drawn over what is behind it, lower on the screen and larger; sizes shrink with distance by the same rule for every object; objects stand where they would in reality and in the rules (a ball is where the player is about to touch it, feet stand on the ground, nothing floats, sinks into or passes through another object by mistake); light, shadows and proportions agree with each other. Any one thing a person would find odd at first glance fails, however well every other criterion passes. Example: a kicker seen from behind with the ball drawn farther away than the kicker, when the ball should be in front of the kicker\'s feet.',
+    howToCheck: 'No own capture: the auditor looks at every enlarged screenshot of the round (and the burst contact sheets) and checks depth order, scale, positions and contact against the real thing.',
+  },
 ]
+
+// Criteria the build and capture steps are given: an auditOnly criterion only
+// when Capture must gather evidence for it because it failed last round.
+const criteriaForCapture = (criteria, failedIds = []) =>
+  criteria.filter((criterion) => !criterion.auditOnly || failedIds.includes(criterion.criterionId))
 
 const COMMON_RULES = `You are one step of an unattended workflow that makes the Area512 app \`${appName}\` for the ${boardSettings.deviceColumnName}.
 - Nobody is watching. Never ask anything and never wait for an answer. When something is not decided, take the sensible default and say which one in your result.
@@ -313,7 +328,7 @@ Write the app in \`${appDirectory}/\`, following steps 2 to 7 of docs/app-develo
 Plan: ${planSummary}
 
 It must meet every criterion below. Read them before you lay out the files.
-${describeCriteria(criteria)}
+${describeCriteria(criteriaForCapture(criteria))}
 
 Match these reference images; open each with Read:
 ${describeReferences(references)}
@@ -364,7 +379,7 @@ ${snapshotStep}
 Return the evidence of every criterion, full or quick, and say which in fullCriteria and quickCriteria. When you could not get it, say why in notCaptured; do not stop.
 
 Criteria:
-${describeCriteria(criteria)}`
+${describeCriteria(criteriaForCapture(criteria, focus.failedIds))}`
   }
 
   return `${COMMON_RULES}
@@ -385,7 +400,7 @@ ${requestNote}
 Return the evidence of every criterion. When you could not get it, say why in notCaptured; do not stop.
 
 Criteria:
-${describeCriteria(criteria)}`
+${describeCriteria(criteriaForCapture(criteria, evidenceRequests.map((request) => request.split(':')[0])))}`
 }
 
 const quickAuditRule = `- Criteria listed in the evidence under quickCriteria passed last round and were given only a quick check this round, because the last fix did not touch them. For each, compare the quick screenshot with its evidence from the round it last passed. Pass when nothing it depends on has visibly changed for the worse and the quick play showed no error. If something did change, or you cannot tell, fail it with evidenceRequest asking for its full evidence; it is then checked in full next round.`
@@ -421,6 +436,7 @@ For each criterion below, decide whether it passed.
 - Pass only when the screenshot meets the pass condition at the level of the references, in what each reference is for. Having something of the kind is not enough.
 - For B3, open every contact sheet with Read and check all 20 frames of each, and read the changed boxes. One frame with terminal text, debug text, a black or blank window or a half-drawn window is a fail. Text or a part that vanishes and comes back is a fail unless plan.md lists it under "Blinking" and that kind of game really blinks it. "It only blinks", "only for a moment" or "the other frames are fine" is never a pass. A screen with no burst is a fail with evidenceRequest.
 - Any screenshot of any criterion that shows terminal text or debug text over the app fails B3 and that criterion.
+- For B4, open every enlarged screenshot of the round and every contact sheet, not only those named for B4, and ask of each: would a person who knows the real thing find anything odd here at first glance? Check what is in front of what, sizes against distance, where each object stands and what touches what. Name each odd thing with its screenshot. "It is pixel art", "it is small", "the references do it too" or "the other criteria pass" never makes an unnatural look pass. An unnatural look also fails the criterion of the screen it is on.
 - Missing or unclear evidence is a fail, with evidenceRequest saying which screen Capture must record next time.
 - For each fail, give fixHint: what to change, with files and lines in \`${appDirectory}/\` and colors in hex.
 ${quickAuditRule}
