@@ -383,6 +383,9 @@ The command fails when the bot throws or the emulator crashed, and then saves
 `errors()` and `reboot()`. A bot runs inside the container, fast enough to react to
 a game step by step, which separate `area512 key` commands are not.
 
+Check rules and numbers that need many tries with a logic test instead (next
+section); a bot checks what the screen shows.
+
 A bot should cover what the person asked to test, check each result on the screen,
 and use the colors of your `render`. A panel can hide what is under it, and the
 screen can be read in the middle of a redraw.
@@ -390,6 +393,65 @@ screen can be read in the middle of a redraw.
 Never leave `puts`, `print`, `p`, `pp` or `printf` in an app, not for debugging
 and not for a bot: what the app prints is drawn on the screen over its window,
 and the screen flickers. A bot reads results from the screen, not from `serial()`.
+
+## Test the logic without the screen
+
+Only when the person asks for deeper testing. What the rules and numbers of the
+app decide (random setups, odds, physics, what an opponent chooses, difficulty,
+scores, which choice pays off over many tries) does not need the screen: run
+the app's own code many times in a **logic test** and count. Keep the screen
+and the bot for what is drawn, how it moves, and what keys do.
+
+A logic test is a separate app, `apps/<name>_test/`. It loads the app's files
+unchanged and, in place of the file that starts the app, a test file that calls
+the app's methods and prints counts. It runs in the emulator's own VM, as fast
+as it can, without waiting for frames.
+
+```text
+apps/mygame_test/
+├── main.manifest   # the app's files except the last, then the test file
+├── const.rb        # copied unchanged from apps/mygame/
+├── rules.rb        # copied unchanged
+├── render.rb       # copied unchanged
+└── test_rules.rb   # the tests, last in the manifest
+```
+
+```ruby
+# test_rules.rb
+puts '### begin'
+game = MyGame.new
+wins = 0
+200.times do
+  game.new_round
+  wins += 1 if game.resolve(:safe) == :win
+end
+puts "safe wins #{wins}/200"
+puts '### done'
+```
+
+```sh
+docker compose exec -T -e TEST_APP=mygame_test emulator-browser area512 bot bots/logic-test.mjs
+```
+
+On the 2432S028, run it in `emulator-browser-2432s028`. `bots/logic-test.mjs` compiles and runs the test app, and prints what it wrote
+between `### begin` and `### done`. It fails when the test app stops with an
+error, does not start within a minute, or does not finish in time
+(`TEST_TIMEOUT_MS`, default 10 minutes).
+
+- Copy the app's `.rb` files and `main.manifest` order every time, so the test
+  runs the app as it is now. Never edit the copies, and never write the logic
+  again in the test: a test of a rewritten copy proves nothing about the app.
+- Print `### begin` first, before any test, then only counts and short
+  results. Do not print the words `Error`, `Out of memory` or `Aborted`.
+- The test app may print; the app itself never does.
+- It has the same memory as the app. If it runs out, split the tests into
+  several test files and run them one by one.
+- `reboot` before the next screen test, and delete `apps/<name>_test/` when
+  done, so that it is not taken for part of the app.
+- For this to work, keep each rule in a method that takes values and returns or
+  stores a result, without drawing, reading keys or waiting. The game loop
+  calls these methods and then draws. Creating the app object (`MyGame.new`)
+  must not draw or wait either; do that in `run`.
 
 ## Put it on the device
 

@@ -7,7 +7,7 @@ export const meta = {
     { title: 'Plan', detail: 'turn each line of the definition into pass conditions' },
     { title: 'References', detail: 'find reference images on the web' },
     { title: 'Build', detail: 'write the app' },
-    { title: 'Capture', detail: 'play the app in the emulator and keep the evidence (full, or focused on what the last fix changed)' },
+    { title: 'Capture', detail: 'run the logic tests, play the app in the emulator and keep the evidence (full, or focused on what the last fix changed)' },
     { title: 'Audit', detail: 'game-play audit and visual audit' },
     { title: 'Fix', detail: 'fix what failed' },
   ],
@@ -56,6 +56,12 @@ const appDirectory = `apps/${appName}`
 const runDirectory = `workflow-runs/${appName}`
 const referenceDirectory = `${runDirectory}/references`
 const botPath = `bots/${appName}.mjs`
+// Logic tests: the app's own code run many times without the screen (see
+// "Test the logic without the screen" in the guide). Their sources are kept
+// here; Capture assembles them into the test app and removes it after.
+const logicTestDirectory = `${runDirectory}/logic-tests`
+const testAppName = `${appName}_test`
+const logicTestCommand = `docker compose exec -T -e TEST_APP=${testAppName} ${boardSettings.emulatorService} area512 bot bots/logic-test.mjs`
 // Capture copies the app here at the end of each round, so that the next
 // round can see exactly which files the fix changed.
 const capturedAppDirectory = (round) => `${runDirectory}/captured-app-r${round}`
@@ -85,6 +91,7 @@ const BUILT_IN_CRITERIA = [
     criterionId: 'B1',
     lineId: 'B',
     kind: 'game',
+    checkedBy: 'screen',
     passCondition: '`compile --all` succeeds, the app starts from the file list, and in every play of the Capture step there is no Ruby error on the screen, no "Out of memory", and `area512 errors` prints nothing.',
     howToCheck: 'Compile and run as the guide says, keep a screenshot after the compile, and run `area512 errors` after each play.',
   },
@@ -92,6 +99,7 @@ const BUILT_IN_CRITERIA = [
     criterionId: 'B2',
     lineId: 'B',
     kind: 'game',
+    checkedBy: 'screen',
     passCondition: `No file in \`${appDirectory}/\` calls \`puts\`, \`print\`, \`p\`, \`pp\` or \`printf\`, and \`area512 serial\` taken after every play of the Capture step has no line written by the app. No debug or test output is left in the app.`,
     howToCheck: `Run \`grep -nE '(^|[^a-z_.])(puts|print|printf|pp|p)( |\\(|$)' ${appDirectory}/*.rb\` and keep its output, and run \`area512 serial\` after each play and keep its output.`,
   },
@@ -99,6 +107,7 @@ const BUILT_IN_CRITERIA = [
     criterionId: 'B3',
     lineId: 'B',
     kind: 'visual',
+    checkedBy: 'screen',
     passCondition: 'Within one screen of the app, nothing flickers. In every burst of 20 screenshots taken back to back on one screen, every frame shows only the app\'s own drawing of that screen: no terminal text, no other app, no black or blank frame, no half-drawn frame. Between frames only what moves by design changes (the ball, flippers, lamps lit by play, the score); text, labels and parts that should stay never vanish and come back. Blinking is allowed only for an item listed under "Blinking" in plan.md as blinking by design. Switching to another app (run_next_app) is not within one screen and is not judged here.',
     howToCheck: 'On every screen of the app (each mode: before a game, during play, between balls, game over, and any other), take a burst of 20 screenshots back to back, once with no input and once while playing. For each burst, write the box of pixels that changed between each pair of frames, and make one contact sheet of the 20 frames for the auditor.',
   },
@@ -109,6 +118,7 @@ const BUILT_IN_CRITERIA = [
     criterionId: 'B4',
     lineId: 'B',
     kind: 'visual',
+    checkedBy: 'screen',
     auditOnly: true,
     passCondition: 'Nothing on any screen looks unnatural. Judge every screenshot as a person who knows the real thing the game shows would see it at first glance; any one thing that looks odd, wrong or out of place fails, however well every other criterion passes. This covers, among others: what is nearer the viewer drawn behind what is farther, or not lower and larger; sizes that do not shrink with distance by one rule; objects where they could not be in reality or in the rules (a ball not where the player is about to touch it, feet off the ground, things floating, sinking into or passing through each other); light, shadows, proportions or colors that disagree; motion that jumps, stops or bends where nothing makes it; text or parts that overlap, are cut off or cover what matters. The ball drawn farther away than a kicker seen from behind, when it should lie in front of the kicker\'s feet, is one example, not the whole rule.',
     howToCheck: 'No own capture: the auditor looks at every enlarged screenshot of the round and every burst contact sheet, of every criterion, and lists each thing that looks unnatural.',
@@ -128,14 +138,14 @@ const COMMON_RULES = `You are one step of an unattended workflow that makes the 
 - Run heavy computations on this machine one at a time, with \`nice -n 19\` and \`timeout\`.
 - To wait for a process you started in the background, wait on its PID (\`while kill -0 <pid>\`) or on a line it writes when it ends. Never wait with \`pgrep -f <text>\` or \`pkill -f\`: the text is also in your own command, so it matches itself and waits until the timeout.
 - The definition is \`${ARGS.definitionPath}\`. Work files go in \`${runDirectory}/\`.
-- The app must never print: no \`puts\`, \`print\`, \`p\`, \`pp\` or \`printf\`, for debugging, for logging or for test evidence. What an app prints is drawn on the screen over the game and makes it flicker. Evidence comes only from the screen: screenshots and the bot's \`readScreen\`.
+- The app must never print: no \`puts\`, \`print\`, \`p\`, \`pp\` or \`printf\`, for debugging, for logging or for test evidence. What an app prints is drawn on the screen over the game and makes it flicker. Evidence comes from the screen (screenshots and the bot's \`readScreen\`), and for criteria checked by a logic test, from the output of that test. Logic tests are a separate test app, \`apps/${testAppName}/\`, which may print; the app never does.
 - Nothing may flicker within one screen of the app. Text and parts that should stay on a screen are drawn every frame, in the same place.
 - An unnatural look is a fail, never a detail. Whatever a person who knows the real thing would find odd at first glance on any screen (what is in front of what, sizes against distance, where things stand and what touches what, light and proportions, motion, overlapping or cut-off text) fails the criterion of that screen (and B4, where B4 is judged), even when the pass condition is otherwise met.`
 
 const describeLines = (lineEntries) => lineEntries.map((entry) => `${entry.lineId}: ${entry.text}`).join('\n')
 
 const describeCriteria = (criteria) => criteria.map((criterion) =>
-  `${criterion.criterionId} (${criterion.kind}, from ${criterion.lineId})\n  pass: ${criterion.passCondition}\n  check: ${criterion.howToCheck}`).join('\n')
+  `${criterion.criterionId} (${criterion.kind}, ${criterion.checkedBy === 'logic' ? 'logic test' : 'screen'}, from ${criterion.lineId})\n  pass: ${criterion.passCondition}\n  check: ${criterion.howToCheck}`).join('\n')
 
 const describeReferences = (references) => references.length === 0
   ? '(none were found)'
@@ -162,9 +172,10 @@ const PLAN_SCHEMA = {
       type: 'array',
       items: {
         type: 'object',
-        required: ['lineId', 'passCondition', 'howToCheck'],
+        required: ['lineId', 'checkedBy', 'passCondition', 'howToCheck'],
         properties: {
           lineId: { type: 'string', description: 'F1, P1, V2, ... of the line this criterion covers' },
+          checkedBy: { type: 'string', enum: ['logic', 'screen'], description: 'logic: a logic test runs the app\'s own code many times without the screen. screen: the bot and screenshots in the emulator' },
           passCondition: { type: 'string' },
           howToCheck: { type: 'string' },
         },
@@ -298,10 +309,14 @@ Controls: ${boardSettings.inputDescription}.
 ${missingNote}
 1. Read the definition and docs/app-development.md. Write \`${runDirectory}/plan.md\`: the rules, what is on each screen, the controls, how a game ends and what is kept after quitting. Keep it within the board's screen and memory as the guide gives them. Add a section "Blinking" that lists each item that blinks by design, and why that kind of game has it; write "none" when nothing does.
 2. For every line below, write one or more criteria with:
-   - passCondition: what must be seen in the emulator, so that two auditors would agree. Use what a bot can count by reading the screen, or features a screenshot shows. Never "is fun" or "looks good". Never a condition that needs the app to print or log anything: the app prints nothing.
-   - howToCheck: what the Capture step does in the emulator to get that evidence: bot actions, when to take screenshots, what to count.
+   - checkedBy: "logic" or "screen". See "Test the logic without the screen" in the guide.
+     - logic: what the rules and numbers of the game decide, above all what needs many tries to show: random setups and their ranges, odds, physics results, what an opponent decides, difficulty from stage to stage, scores, which choice or strategy pays off over many tries. A logic test runs the app's own code many times, as fast as the VM can, without the screen.
+     - screen: what is drawn and how it looks or moves, what keys or taps do on the screen, screens and transitions, and a play from the keys to the end. The bot checks these in the emulator, in real time.
+     A line that needs both gets one criterion of each. Its screen criterion then shows a few cases on the screen and checks that the screen agrees with what the logic decides; it does not repeat the counting of many tries.
+   - passCondition: so that two auditors would agree. For logic: the counts and comparisons the logic test must print. For screen: what a bot can count by reading the screen, or features a screenshot shows. Never "is fun" or "looks good". Never a condition that needs the app itself to print or log anything: the app prints nothing.
+   - howToCheck: for logic: which of the app's methods the test calls, with which inputs, how many tries, and what it counts. For screen: bot actions, when to take screenshots, what to count.
    Every condition must be possible on this board, and must not depend on exact speed: the emulator's timing is not the device's.
-3. Lines starting with P are about play: the choices the player makes, what each costs, and how hard the game is. Having a feature is never enough for them. Their criteria compare plays: the bot's best play against random keys and against doing nothing, and two or more different strategies against each other (for example, two choices at the same price must lead to different results that each pay off somewhere). Write in plan.md, for each P line, the rule that makes it true, and give the bot the strategies to compare.
+3. Lines starting with P are about play: the choices the player makes, what each costs, and how hard the game is. Having a feature is never enough for them. Their criteria compare plays: the best play against random choices and against doing nothing, and two or more different strategies against each other (for example, two choices at the same price must lead to different results that each pay off somewhere). Compare strategies over many tries with logic tests; the best, random-keys and idle plays from the keys to the end stay on the screen. Write in plan.md, for each P line, the rule that makes it true, and the strategies to compare.
 
 Lines:
 ${describeLines(definitionLineEntries)}`
@@ -337,7 +352,8 @@ ${describeReferences(references)}
 
 - Check every method with the MCP before you call it. Keep each file the size the guide gives, or the device runs out of memory.
 - If \`${appDirectory}/\` already has an app, build on it instead of starting over. Remove every \`puts\`, \`print\`, \`p\`, \`pp\` and \`printf\` it has.
-- Finish with the guide's light check. Do not write a bot.`
+- Keep every rule in a method that takes values and returns or stores a result, without drawing, reading keys or waiting, and let creating the app object neither draw nor wait, so that logic tests can call the same methods (see "Test the logic without the screen" in the guide).
+- Finish with the guide's light check. Do not write a bot or logic tests.`
 }
 
 function capturePrompt(criteria, round, evidenceRequests, focus) {
@@ -356,6 +372,12 @@ sheet = Image.new('RGB', (frames[0].width * 5, frames[0].height * ((len(frames) 
 for index, frame in enumerate(frames):
     sheet.paste(frame, ((index % 5) * frame.width, (index // 5) * frame.height))
 sheet.save(sys.argv[1])" screenshots/${screenshotPrefix}sheet-<screen>-<idle|play>.png <the 20 screenshots in order>`
+  const logicTestStep = `Logic tests, for every criterion checked by a logic test (see "Test the logic without the screen" in the guide). Run them all every round: they take minutes, not hours.
+   - Write or update the test files in \`${logicTestDirectory}/\` (\`test_<what>.rb\`). Each calls the app's own methods with the inputs and number of tries its criterion's "check" gives, and prints the counts its pass condition needs, prefixed with the criterion id. Never write the app's logic again in a test, never stub or replace a method of the app the criterion is about, and never change the app's files.
+   - Assemble the test app fresh for each test file: \`rm -rf apps/${testAppName} && mkdir apps/${testAppName}\`, copy the app's \`.rb\` files unchanged, copy the test file, and write \`apps/${testAppName}/main.manifest\` as the app's \`main.manifest\` without its last line (the file that starts the app), followed by the test file's \`.mrb\`.
+   - Run \`${logicTestCommand} > ${runDirectory}/logic-r${round}-<what>.log 2>&1\`. If it runs out of memory, split the test file.
+   - Afterwards, \`rm -rf apps/${testAppName}\` and \`${emulatorCommandPrefix} reboot\`, so that the screen tests see only the app.
+   - Give as evidence of each logic criterion its test file and its log, and copy the counts into measurements.`
   const enlargeCommand = `docker compose run --rm --entrypoint python3 assets -c "import sys
 from PIL import Image
 for p in sys.argv[1:]:
@@ -368,9 +390,10 @@ for p in sys.argv[1:]:
 This is a focused round. Last round the criteria ${focus.failedIds.join(', ')} failed, a fix changed the app, and every other criterion passed. Check in full what the fix could have changed, and give everything else only a quick check for regressions. You are the only step using the emulator now. Do not change \`${appDirectory}/\`.
 
 1. Find what changed, from the files, not from what anyone says: \`diff -rq ${capturedAppDirectory(focus.previousRound)} ${appDirectory}\`, then \`diff -u\` each changed \`.rb\` file and each changed data file (ignore \`.mrb\`). If \`${capturedAppDirectory(focus.previousRound)}\` does not exist, you cannot tell what changed: check every criterion in full, as step 4 says, and report every criterion in fullCriteria.
-2. Decide which criteria to check in full. Always: ${focus.failedIds.join(', ')}, B1 and B2. Add every criterion that a changed file could affect: read the diff and where the changed methods, constants and data are used (grep for them in \`${appDirectory}/\`). Code that every screen draws, such as a map, a frame, a font or shared layout, touches every criterion whose screen shows it. Changed game rules, data or saving touch the game criteria that use them. When in doubt, check it in full. Report these in fullCriteria, the rest in quickCriteria, and why in affectedReasons.
+2. Decide which criteria to check in full. Always: every criterion checked by a logic test, ${focus.failedIds.join(', ')}, B1 and B2. Add every criterion that a changed file could affect: read the diff and where the changed methods, constants and data are used (grep for them in \`${appDirectory}/\`). Code that every screen draws, such as a map, a frame, a font or shared layout, touches every criterion whose screen shows it. Changed game rules, data or saving touch the game criteria that use them. When in doubt, check it in full. Report these in fullCriteria, the rest in quickCriteria, and why in affectedReasons.
 3. \`${emulatorCommandPrefix} reboot\`, then compile and start the app as the guide says. If it does not compile or crashes, keep a screenshot and the \`errors\` output as evidence for B1, and finish.
-4. For each criterion in fullCriteria, gather its evidence exactly as its "check" says, using \`${botPath}\` (update it if needed; see "Test deeper with a bot" in the guide). This includes playing to the end, the best, random and idle plays, and the B3 bursts, but only where those criteria need them. For B3 bursts, on each screen in question, take 20 screenshots back to back (\`${screenshotPrefix}burst-<screen>-<idle|play>-<nn>\`) and run:
+3b. ${logicTestStep}
+4. For each screen criterion in fullCriteria, gather its evidence exactly as its "check" says, using \`${botPath}\` (update it if needed; see "Test deeper with a bot" in the guide). This includes playing to the end, the best, random and idle plays, and the B3 bursts, but only where those criteria need them. For B3 bursts, on each screen in question, take 20 screenshots back to back (\`${screenshotPrefix}burst-<screen>-<idle|play>-<nn>\`) and run:
    \`${burstCommand}\`
 5. Quick check for everything in quickCriteria, in a few minutes: one short play (\`quick\`) that goes through every screen of the app by the shortest route (start from a saved game or a fixed setup if the app has one), with one screenshot of each screen (\`${screenshotPrefix}quick-<screen>\`) and the \`errors\` and \`serial\` output at the end. Do not play to the end only for the quick check. For each quick criterion, give as evidence the quick screenshot of its screen and the path of its evidence from the round in which it last passed; the screenshots of earlier rounds are in \`screenshots/${appName}-r<round>-*\`.
 6. Enlarge every screenshot of this round 4 times, except the burst frames and the contact sheets:
@@ -389,7 +412,8 @@ ${describeCriteria(criteriaForCapture(criteria, focus.failedIds))}`
 Play the app in the emulator and keep the evidence the auditors need. This is a full round: check every criterion in full. You are the only step using the emulator now. Do not change \`${appDirectory}/\`.
 
 1. \`${emulatorCommandPrefix} reboot\`, then compile and start the app as the guide says. If it does not compile or crashes, keep a screenshot and the \`errors\` output as evidence for B1, and finish.
-2. Write or update the bot \`${botPath}\`. See "Test deeper with a bot" in the guide and \`bots/snake.mjs\`. It plays the way a person would and gathers the evidence of every criterion's "check" below. It reads everything from the screen with \`readScreen\` and screenshots; it never uses \`serial()\` as evidence, because the app prints nothing. It prints counts and values with console.log, which \`${emulatorCommandPrefix} bot ${botPath}\` shows. Name every screenshot starting with \`${screenshotPrefix}\`, so that it lands in \`screenshots/${screenshotPrefix}*.png\`.
+2. ${logicTestStep}
+2b. Write or update the bot \`${botPath}\`. See "Test deeper with a bot" in the guide and \`bots/snake.mjs\`. It plays the way a person would and gathers the evidence of every screen criterion's "check" below; criteria checked by a logic test are not counted again on the screen. It reads everything from the screen with \`readScreen\` and screenshots; it never uses \`serial()\` as evidence, because the app prints nothing. It prints counts and values with console.log, which \`${emulatorCommandPrefix} bot ${botPath}\` shows. Name every screenshot starting with \`${screenshotPrefix}\`, so that it lands in \`screenshots/${screenshotPrefix}*.png\`.
 3. Also play three times, one after another, each until the game ends or 3 minutes pass: "best" (the bot plays as well as it can), "random" (random valid inputs as fast as possible), "idle" (no input). Keep screenshots at the start, middle and end of each, and the \`${emulatorCommandPrefix} errors\` and \`${emulatorCommandPrefix} serial\` output after each.
 4. For B3, on every screen of the app, have the bot take bursts of 20 screenshots back to back with no sleep between them (\`${screenshotPrefix}burst-<screen>-<idle|play>-<nn>\`), once with no input and once while playing. Then, for each burst, print the box of pixels that changed between each pair of frames, and make one contact sheet:
    \`${burstCommand}\`
@@ -415,6 +439,7 @@ You audit the game play. You did not make this app, and nothing that says it wor
 For each criterion below, decide whether it passed.
 - Pass only when the evidence shows the pass condition directly. Missing or unclear evidence is a fail, with evidenceRequest saying what Capture must record next time.
 - Look at the screenshots yourself with Read. Read \`${botPath}\` to check that it measured what the evidence claims.
+- For a criterion checked by a logic test, read its test file in \`${logicTestDirectory}/\` and its log. It passes only when the test ran the app's own code: compare the files the test app was built from with \`${appDirectory}/\` where you can, and check that the test calls the app's methods, does not write the logic under test again, does not stub or replace it, and ran the tries its "check" gives. A test that proves something about a rewritten copy is a fail, with evidenceRequest asking for a test of the app's own code. Judge the counts in the log against the pass condition.
 - For B2, run the grep yourself on \`${appDirectory}/*.rb\`. One printing call, or one line from the app in any \`serial\` output, is a fail. Evidence that came from what the app printed is not evidence: fail the criterion that rests on it, with evidenceRequest saying how to read it from the screen.
 - A bot's win rate is not enough on its own. Compare the "best", "random" and "idle" plays: if random inputs do as well as the best play, or doing nothing does not lose, the criteria about skill or challenge fail. If the start, middle and end look the same, the criteria about change fail.
 - A criterion from a P line (play) passes only on a comparison of plays. That a choice exists is never enough: if one option is better in every case, or the strategies the plan compares end the same way, it fails.
@@ -468,7 +493,8 @@ function fixPrompt(criteria, failedVerdicts, failStreaks, fixHistory, references
 
 Change the app so that the failed criteria below pass, without breaking the ones that pass. You may use the emulator.
 
-- Change only \`${appDirectory}/\`. Do not change the criteria, \`${botPath}\` or \`${runDirectory}/plan.md\`.
+- Change only \`${appDirectory}/\`. Do not change the criteria, \`${botPath}\`, \`${logicTestDirectory}/\` or \`${runDirectory}/plan.md\`.
+- For a failed criterion checked by a logic test, run its test against your change before you finish, as Capture does (\`${logicTestCommand}\`, with the test app assembled as "Test the logic without the screen" in the guide says), and remove \`apps/${testAppName}\` afterwards. Keep every rule callable without drawing, reading keys or waiting.
 - Look at the evidence files with Read before you change anything.
 - When you fix one unnatural thing, look at the whole screen again for others, and at the screens that share the drawing.
 - A fail whose auditor only asks for evidence (evidenceRequest) and finds no fault in the app needs no change to the app; leave it to Capture.
@@ -506,6 +532,7 @@ async function makeCriteria() {
         criterionId: `${criterion.lineId}-${criterionCountByLineId[criterion.lineId]}`,
         lineId: criterion.lineId,
         kind: lineKindById[criterion.lineId],
+        checkedBy: criterion.checkedBy === 'logic' ? 'logic' : 'screen',
         passCondition: criterion.passCondition,
         howToCheck: criterion.howToCheck,
       }

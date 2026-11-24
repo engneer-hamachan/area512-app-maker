@@ -22,6 +22,7 @@ game-definitions/*
 # Bots other than snake (the workflow writes probe bots here)
 bots/*
 !bots/snake.mjs
+!bots/logic-test.mjs
 
 # Apps other than snake
 apps/*
