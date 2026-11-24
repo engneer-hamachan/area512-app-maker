@@ -38,6 +38,11 @@ alignas(4) static uint8_t
   s_framebuffer[SCREEN_WIDTH * SCREEN_HEIGHT * PIXEL_BYTE_SIZE];
 static uint8_t *s_framebuffer_rows[SCREEN_HEIGHT];
 
+// Odd while the firmware draws into the framebuffer, even between drawings.
+// The page copies the framebuffer only when the count is even and unchanged,
+// so it never shows a drawing half done.
+static std::atomic<uint32_t> s_drawing_count{0};
+
 // The pressed point as touch_screen_x << 16 | touch_screen_y, or -1 when the
 // page's pointer is up.
 static std::atomic<int32_t> s_pressed_touch_point{-1};
@@ -87,6 +92,10 @@ public:
 
     setBus(&s_null_bus);
   }
+
+  // A drawing starts and ends here: the outermost startWrite and endWrite.
+  void beginTransaction(void) override { s_drawing_count.fetch_add(1); }
+  void endTransaction(void) override { s_drawing_count.fetch_add(1); }
 
 private:
   static lgfx::Bus_NULL s_null_bus;
@@ -230,6 +239,13 @@ area512_display_reset_touch_calibration(void) {
 extern "C" EMSCRIPTEN_KEEPALIVE uint8_t *
 area512_emulator_framebuffer(void) {
   return s_framebuffer;
+}
+
+extern "C" EMSCRIPTEN_KEEPALIVE uint32_t *
+area512_emulator_drawing_count(void) {
+  static_assert(sizeof(s_drawing_count) == sizeof(uint32_t));
+
+  return reinterpret_cast<uint32_t *>(&s_drawing_count);
 }
 
 // The page waits for the first read of the touch panel before it types or

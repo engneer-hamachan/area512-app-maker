@@ -34,6 +34,11 @@ alignas(4) static uint8_t
   s_framebuffer[DISPLAY_WIDTH * DISPLAY_HEIGHT * PIXEL_BYTE_SIZE];
 static uint8_t *s_framebuffer_rows[DISPLAY_HEIGHT];
 
+// Odd while the firmware draws into the framebuffer, even between drawings.
+// The page copies the framebuffer only when the count is even and unchanged,
+// so it never shows a drawing half done.
+static std::atomic<uint32_t> s_drawing_count{0};
+
 class BrowserPanel : public lgfx::Panel_FrameBufferBase {
 public:
   BrowserPanel(void) {
@@ -55,6 +60,10 @@ public:
 
     setBus(&s_null_bus);
   }
+
+  // A drawing starts and ends here: the outermost startWrite and endWrite.
+  void beginTransaction(void) override { s_drawing_count.fetch_add(1); }
+  void endTransaction(void) override { s_drawing_count.fetch_add(1); }
 
 private:
   static lgfx::Bus_NULL s_null_bus;
@@ -171,6 +180,13 @@ EmulatedInternalI2c::stop(void) {
 extern "C" EMSCRIPTEN_KEEPALIVE uint8_t *
 area512_emulator_framebuffer(void) {
   return s_framebuffer;
+}
+
+extern "C" EMSCRIPTEN_KEEPALIVE uint32_t *
+area512_emulator_drawing_count(void) {
+  static_assert(sizeof(s_drawing_count) == sizeof(uint32_t));
+
+  return reinterpret_cast<uint32_t *>(&s_drawing_count);
 }
 
 // keyboard_init drops the events queued before it, so a key is only safe to

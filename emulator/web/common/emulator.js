@@ -25,10 +25,64 @@ function appendSerialText(text) {
   serialLines.push(text);
 }
 
+// The firmware draws on its own thread while the page copies. A copy is kept
+// only when no drawing ran during it and none ran for QUIET_MILLISECONDS
+// before it, so that the screens an app pushes in quick succession appear
+// together and a drawing never shows half done. An app that draws without a
+// pause still appears: after MAX_DISCARDED_COPIES the copy is kept anyway.
+const QUIET_MILLISECONDS = 1;
+const QUIET_WAIT_LIMIT_MILLISECONDS = 4;
+const MAX_DISCARDED_COPIES = 4;
+const stagingFrame = context.createImageData(canvas.width, canvas.height);
+let discardedCopyCount = 0;
+
+function readDrawingCount() {
+  return Atomics.load(Module.HEAPU32, Module._area512_emulator_drawing_count() >> 2);
+}
+
+// The drawing count once the firmware has not drawn for QUIET_MILLISECONDS,
+// or null when it kept drawing for QUIET_WAIT_LIMIT_MILLISECONDS.
+function waitForQuietDrawingCount() {
+  const startTime = performance.now();
+  let drawingCount = readDrawingCount();
+  let unchangedSince = startTime;
+
+  for (;;) {
+    const now = performance.now();
+    const currentCount = readDrawingCount();
+
+    if (currentCount !== drawingCount) {
+      drawingCount = currentCount;
+      unchangedSince = now;
+    } else if (drawingCount % 2 === 0 && now - unchangedSince >= QUIET_MILLISECONDS) {
+      return drawingCount;
+    }
+
+    if (now - startTime >= QUIET_WAIT_LIMIT_MILLISECONDS)
+      return null;
+  }
+}
+
 function copyFramebufferToCanvas() {
+  const drawingCount = waitForQuietDrawingCount();
+
+  copyFramebufferTo(stagingFrame.data);
+
+  const isWhole = drawingCount !== null && readDrawingCount() === drawingCount;
+
+  if (!isWhole && discardedCopyCount < MAX_DISCARDED_COPIES) {
+    discardedCopyCount++;
+    return;
+  }
+
+  discardedCopyCount = 0;
+  frame.data.set(stagingFrame.data);
+  context.putImageData(frame, 0, 0);
+}
+
+function copyFramebufferTo(pixels) {
   const framebuffer = Module._area512_emulator_framebuffer();
   const heap = Module.HEAPU8;
-  const pixels = frame.data;
 
   for (let pixelIndex = 0; pixelIndex < canvas.width * canvas.height; pixelIndex++) {
     const firstByte = heap[framebuffer + pixelIndex * 2];
@@ -43,8 +97,6 @@ function copyFramebufferToCanvas() {
     pixels[pixelIndex * 4 + 2] = (blue << 3) | (blue >> 2);
     pixels[pixelIndex * 4 + 3] = OPAQUE_ALPHA;
   }
-
-  context.putImageData(frame, 0, 0);
 }
 
 function drawFrame() {

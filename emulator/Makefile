@@ -184,8 +184,8 @@ $(OBJECTS)$(TREE_SITTER)/%.c.o: CFLAGS_FOR_SOURCE := $(TREE_SITTER_FLAGS)
 LINK_FLAGS := -O2 -pthread -sPROXY_TO_PTHREAD -sPTHREAD_POOL_SIZE=8 \
   -sINITIAL_MEMORY=256MB -sSTACK_SIZE=8MB -sDEFAULT_PTHREAD_STACK_SIZE=2MB \
   -sEXIT_RUNTIME=0 -sFORCE_FILESYSTEM=1 \
-  -sEXPORTED_RUNTIME_METHODS=FS,HEAPU8,addRunDependency,removeRunDependency \
-  -sEXPORTED_FUNCTIONS=_main,_area512_emulator_framebuffer,$(BOARD_EXPORTED_FUNCTIONS) \
+  -sEXPORTED_RUNTIME_METHODS=FS,HEAPU8,HEAPU32,addRunDependency,removeRunDependency \
+  -sEXPORTED_FUNCTIONS=_main,_area512_emulator_framebuffer,_area512_emulator_drawing_count,$(BOARD_EXPORTED_FUNCTIONS) \
   -sENVIRONMENT=web,worker
 
 all: $(WEB)/area512.js
