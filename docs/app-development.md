@@ -402,23 +402,23 @@ scores, which choice pays off over many tries) does not need the screen: run
 the app's own code many times in a **logic test** and count. Keep the screen
 and the bot for what is drawn, how it moves, and what keys do.
 
-A logic test is a separate app, `apps/<name>_test/`. It loads the app's files
-unchanged and, in place of the file that starts the app, a test file that calls
-the app's methods and prints counts. It runs in the emulator's own VM, as fast
-as it can, without waiting for frames.
+A logic test runs outside the emulator, with PicoRuby built for this machine
+from the firmware's own source: the same VM and the same numbers, but no 100 KB
+limit and no frames to wait for, so thousands of tries take seconds.
 
-```text
-apps/mygame_test/
-├── main.manifest   # the app's files except the last, then the test file
-├── const.rb        # copied unchanged from apps/mygame/
-├── rules.rb        # copied unchanged
-├── render.rb       # copied unchanged
-└── test_rules.rb   # the tests, last in the manifest
+```sh
+docker compose build picoruby     # once
+docker compose run --rm picoruby apps/mygame tests/mygame/test_rules.rb
 ```
+
+It loads, as one program: stand-ins for the device's screen, keyboard, card and
+pins (every method does nothing and returns nil), the app's files in the order
+of its `main.manifest`, and the test files. The last line of the app's last
+file, which starts the app (`MyGame.new.run`), is left out, so the test creates
+the object and calls its methods. The app's files are read, never changed.
 
 ```ruby
 # test_rules.rb
-puts '### begin'
 game = MyGame.new
 wins = 0
 200.times do
@@ -426,32 +426,20 @@ wins = 0
   wins += 1 if game.resolve(:safe) == :win
 end
 puts "safe wins #{wins}/200"
-puts '### done'
 ```
 
-```sh
-docker compose exec -T -e TEST_APP=mygame_test emulator-browser area512 bot bots/logic-test.mjs
-```
-
-On the 2432S028, run it in `emulator-browser-2432s028`. `bots/logic-test.mjs` compiles and runs the test app, and prints what it wrote
-between `### begin` and `### done`. It fails when the test app stops with an
-error, does not start within a minute, or does not finish in time
-(`TEST_TIMEOUT_MS`, default 10 minutes).
-
-- Copy the app's `.rb` files and `main.manifest` order every time, so the test
-  runs the app as it is now. Never edit the copies, and never write the logic
-  again in the test: a test of a rewritten copy proves nothing about the app.
-- Print `### begin` first, before any test, then only counts and short
-  results. Do not print the words `Error`, `Out of memory` or `Aborted`.
-- The test app may print; the app itself never does.
-- It has the same memory as the app. If it runs out, split the tests into
-  several test files and run them one by one.
-- `reboot` before the next screen test, and delete `apps/<name>_test/` when
-  done, so that it is not taken for part of the app.
-- For this to work, keep each rule in a method that takes values and returns or
-  stores a result, without drawing, reading keys or waiting. The game loop
-  calls these methods and then draws. Creating the app object (`MyGame.new`)
-  must not draw or wait either; do that in `run`.
+- Never write the app's logic again in a test, and never replace a method the
+  test is about: a test of a rewritten copy proves nothing about the app.
+- Only the PicoRuby methods exist, as on the device: check them as the guide
+  says. An error names a line of the joined program; the run prints which
+  lines came from which file.
+- It does not find "Out of memory": the screen tests in the emulator do.
+- For this to work, keep each rule in a method that takes values and returns
+  or stores a result, without drawing, reading keys or waiting. The game loop
+  calls these methods and then draws. Creating the app object and setting up
+  its state (`MyGame.new`, then the method `run` calls first) must not draw or
+  wait either.
+- End the app's last file with the one line that starts the app.
 
 ## Put it on the device
 

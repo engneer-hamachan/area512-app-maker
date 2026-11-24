@@ -56,12 +56,11 @@ const appDirectory = `apps/${appName}`
 const runDirectory = `workflow-runs/${appName}`
 const referenceDirectory = `${runDirectory}/references`
 const botPath = `bots/${appName}.mjs`
-// Logic tests: the app's own code run many times without the screen (see
-// "Test the logic without the screen" in the guide). Their sources are kept
-// here; Capture assembles them into the test app and removes it after.
+// Logic tests: the app's own code run many times with PicoRuby on this
+// machine, outside the emulator (see "Test the logic without the screen" in
+// the guide). They do not use the emulator, so they never wait for it.
 const logicTestDirectory = `${runDirectory}/logic-tests`
-const testAppName = `${appName}_test`
-const logicTestCommand = `docker compose exec -T -e TEST_APP=${testAppName} ${boardSettings.emulatorService} area512 bot bots/logic-test.mjs`
+const logicTestCommand = `docker compose run --rm picoruby ${appDirectory} ${logicTestDirectory}/test_<what>.rb`
 // Capture copies the app here at the end of each round, so that the next
 // round can see exactly which files the fix changed.
 const capturedAppDirectory = (round) => `${runDirectory}/captured-app-r${round}`
@@ -138,7 +137,7 @@ const COMMON_RULES = `You are one step of an unattended workflow that makes the 
 - Run heavy computations on this machine one at a time, with \`nice -n 19\` and \`timeout\`.
 - To wait for a process you started in the background, wait on its PID (\`while kill -0 <pid>\`) or on a line it writes when it ends. Never wait with \`pgrep -f <text>\` or \`pkill -f\`: the text is also in your own command, so it matches itself and waits until the timeout.
 - The definition is \`${ARGS.definitionPath}\`. Work files go in \`${runDirectory}/\`.
-- The app must never print: no \`puts\`, \`print\`, \`p\`, \`pp\` or \`printf\`, for debugging, for logging or for test evidence. What an app prints is drawn on the screen over the game and makes it flicker. Evidence comes from the screen (screenshots and the bot's \`readScreen\`), and for criteria checked by a logic test, from the output of that test. Logic tests are a separate test app, \`apps/${testAppName}/\`, which may print; the app never does.
+- The app must never print: no \`puts\`, \`print\`, \`p\`, \`pp\` or \`printf\`, for debugging, for logging or for test evidence. What an app prints is drawn on the screen over the game and makes it flicker. Evidence comes from the screen (screenshots and the bot's \`readScreen\`), and for criteria checked by a logic test, from the output of that test. Logic tests run outside the app and may print; the app never does.
 - Nothing may flicker within one screen of the app. Text and parts that should stay on a screen are drawn every frame, in the same place.
 - An unnatural look is a fail, never a detail. Whatever a person who knows the real thing would find odd at first glance on any screen (what is in front of what, sizes against distance, where things stand and what touches what, light and proportions, motion, overlapping or cut-off text) fails the criterion of that screen (and B4, where B4 is judged), even when the pass condition is otherwise met.`
 
@@ -352,7 +351,7 @@ ${describeReferences(references)}
 
 - Check every method with the MCP before you call it. Keep each file the size the guide gives, or the device runs out of memory.
 - If \`${appDirectory}/\` already has an app, build on it instead of starting over. Remove every \`puts\`, \`print\`, \`p\`, \`pp\` and \`printf\` it has.
-- Keep every rule in a method that takes values and returns or stores a result, without drawing, reading keys or waiting, and let creating the app object neither draw nor wait, so that logic tests can call the same methods (see "Test the logic without the screen" in the guide).
+- Keep every rule in a method that takes values and returns or stores a result, without drawing, reading keys or waiting, and let creating the app object and setting up its state neither draw nor wait, so that logic tests can call the same methods (see "Test the logic without the screen" in the guide). End the last file of the manifest with the one line that starts the app.
 - Finish with the guide's light check. Do not write a bot or logic tests.`
 }
 
@@ -372,11 +371,11 @@ sheet = Image.new('RGB', (frames[0].width * 5, frames[0].height * ((len(frames) 
 for index, frame in enumerate(frames):
     sheet.paste(frame, ((index % 5) * frame.width, (index // 5) * frame.height))
 sheet.save(sys.argv[1])" screenshots/${screenshotPrefix}sheet-<screen>-<idle|play>.png <the 20 screenshots in order>`
-  const logicTestStep = `Logic tests, for every criterion checked by a logic test (see "Test the logic without the screen" in the guide). Run them all every round: they take minutes, not hours.
-   - Write or update the test files in \`${logicTestDirectory}/\` (\`test_<what>.rb\`). Each calls the app's own methods with the inputs and number of tries its criterion's "check" gives, and prints the counts its pass condition needs, prefixed with the criterion id. Never write the app's logic again in a test, never stub or replace a method of the app the criterion is about, and never change the app's files.
-   - Assemble the test app fresh for each test file: \`rm -rf apps/${testAppName} && mkdir apps/${testAppName}\`, copy the app's \`.rb\` files unchanged, copy the test file, and write \`apps/${testAppName}/main.manifest\` as the app's \`main.manifest\` without its last line (the file that starts the app), followed by the test file's \`.mrb\`.
-   - Run \`${logicTestCommand} > ${runDirectory}/logic-r${round}-<what>.log 2>&1\`. If it runs out of memory, split the test file.
-   - Afterwards, \`rm -rf apps/${testAppName}\` and \`${emulatorCommandPrefix} reboot\`, so that the screen tests see only the app.
+  const logicTestStep = `Logic tests, for every criterion checked by a logic test (see "Test the logic without the screen" in the guide). They run with PicoRuby on this machine, not in the emulator, and take seconds: run them all every round.
+   - \`docker compose build picoruby\` if the image is missing.
+   - Write or update the test files in \`${logicTestDirectory}/\` (\`test_<what>.rb\`). Each creates the app object, calls the app's own methods with the inputs and number of tries its criterion's "check" gives (more tries are cheap), and prints the counts its pass condition needs, prefixed with the criterion id. Never write the app's logic again in a test, never replace a method of the app the criterion is about, and never change the app's files.
+   - Run \`${logicTestCommand} > ${runDirectory}/logic-r${round}-<what>.log 2>&1\`.
+   - If a test cannot call a rule without drawing, reading keys or waiting, that is a fault of the app: report it in the criterion's observation, as evidence of the fail.
    - Give as evidence of each logic criterion its test file and its log, and copy the counts into measurements.`
   const enlargeCommand = `docker compose run --rm --entrypoint python3 assets -c "import sys
 from PIL import Image
@@ -439,7 +438,7 @@ You audit the game play. You did not make this app, and nothing that says it wor
 For each criterion below, decide whether it passed.
 - Pass only when the evidence shows the pass condition directly. Missing or unclear evidence is a fail, with evidenceRequest saying what Capture must record next time.
 - Look at the screenshots yourself with Read. Read \`${botPath}\` to check that it measured what the evidence claims.
-- For a criterion checked by a logic test, read its test file in \`${logicTestDirectory}/\` and its log. It passes only when the test ran the app's own code: compare the files the test app was built from with \`${appDirectory}/\` where you can, and check that the test calls the app's methods, does not write the logic under test again, does not stub or replace it, and ran the tries its "check" gives. A test that proves something about a rewritten copy is a fail, with evidenceRequest asking for a test of the app's own code. Judge the counts in the log against the pass condition.
+- For a criterion checked by a logic test, read its test file in \`${logicTestDirectory}/\` and its log. It passes only when the test ran the app's own code: the log lists the app's files it loaded, and the test creates the app object and calls the app's methods, does not write the logic under test again, does not replace it, and ran the tries its "check" gives. A test that proves something about a rewritten copy is a fail, with evidenceRequest asking for a test of the app's own code. A rule that cannot be called without drawing, reading keys or waiting is a fail of the app, with fixHint. Judge the counts in the log against the pass condition.
 - For B2, run the grep yourself on \`${appDirectory}/*.rb\`. One printing call, or one line from the app in any \`serial\` output, is a fail. Evidence that came from what the app printed is not evidence: fail the criterion that rests on it, with evidenceRequest saying how to read it from the screen.
 - A bot's win rate is not enough on its own. Compare the "best", "random" and "idle" plays: if random inputs do as well as the best play, or doing nothing does not lose, the criteria about skill or challenge fail. If the start, middle and end look the same, the criteria about change fail.
 - A criterion from a P line (play) passes only on a comparison of plays. That a choice exists is never enough: if one option is better in every case, or the strategies the plan compares end the same way, it fails.
@@ -494,7 +493,7 @@ function fixPrompt(criteria, failedVerdicts, failStreaks, fixHistory, references
 Change the app so that the failed criteria below pass, without breaking the ones that pass. You may use the emulator.
 
 - Change only \`${appDirectory}/\`. Do not change the criteria, \`${botPath}\`, \`${logicTestDirectory}/\` or \`${runDirectory}/plan.md\`.
-- For a failed criterion checked by a logic test, run its test against your change before you finish, as Capture does (\`${logicTestCommand}\`, with the test app assembled as "Test the logic without the screen" in the guide says), and remove \`apps/${testAppName}\` afterwards. Keep every rule callable without drawing, reading keys or waiting.
+- For a failed criterion checked by a logic test, run its test against your change before you finish (\`${logicTestCommand}\`; it takes seconds and does not use the emulator). Keep every rule callable without drawing, reading keys or waiting, and the app's last file ending with the one line that starts the app.
 - Look at the evidence files with Read before you change anything.
 - When you fix one unnatural thing, look at the whole screen again for others, and at the screens that share the drawing.
 - A fail whose auditor only asks for evidence (evidenceRequest) and finds no fault in the app needs no change to the app; leave it to Capture.

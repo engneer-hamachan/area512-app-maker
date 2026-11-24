@@ -15,6 +15,15 @@ services:
     volumes:
       - .:/workspace:ro
 
+  # Runs an app's logic tests with PicoRuby on this machine, without the
+  # emulator: docker compose run --rm picoruby apps/<name> <test.rb>...
+  picoruby:
+    build: tools/picoruby
+    image: area512-picoruby
+    working_dir: /workspace
+    volumes:
+      - .:/workspace:ro
+
   # Makes .a5d dot images and image.h start screens.
   assets:
     build: tools/assets
