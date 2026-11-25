@@ -1,6 +1,6 @@
 ---
 name: area512-work-flow
-description: Make an Area512 game from a game definition file (game-definitions/*.md) without asking anything, then repeat audits of its game play and its look, and fixes, until every line of the definition passes, for at most five rounds. Use only when the person runs /area512-work-flow <definition file>.
+description: Make an Area512 game from a game definition file (game-definitions/*.md) without asking anything, then repeat audits of its game play and its look, and fixes, until every line of the definition passes, for at most two rounds. Use only when the person runs /area512-work-flow <definition file>.
 argument-hint: <definition file>
 ---
 
@@ -74,7 +74,7 @@ steps use the emulator one at a time.
 
 Repeat until it returns `finished: true`.
 
-The run ends after 5 rounds even if criteria still fail (`args.maxRounds`
+The run ends after 2 rounds even if criteria still fail (`args.maxRounds`
 changes the number). It then returns `roundLimitReached: true` and the failed
 verdicts in `unresolved`. Do not run it again for them: report them.
 

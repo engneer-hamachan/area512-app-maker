@@ -85,7 +85,7 @@ const EARLIER_CHANGE_COUNT_IN_FIX_PROMPT = 5
 // The run ends after this many rounds even if criteria still fail, so that a
 // criterion the app cannot meet (for example one blocked by the emulator)
 // does not loop forever. The failed criteria are returned as unresolved.
-const MAX_ROUNDS = Number(ARGS.maxRounds) > 0 ? Number(ARGS.maxRounds) : 5
+const MAX_ROUNDS = Number(ARGS.maxRounds) > 0 ? Number(ARGS.maxRounds) : 2
 
 const funLineEntries = ARGS.funLines.map((text, index) => ({ lineId: `F${index + 1}`, kind: 'game', text }))
 // "Play" lines: the decisions, trade-offs and challenge of the game, apart from what it has and how it feels.
