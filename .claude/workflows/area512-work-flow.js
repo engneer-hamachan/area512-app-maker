@@ -7,7 +7,7 @@ export const meta = {
     { title: 'Plan', detail: 'turn each line of the definition into pass conditions' },
     { title: 'References', detail: 'find reference images on the web' },
     { title: 'Build', detail: 'write the app' },
-    { title: 'Capture', detail: 'run the logic tests, play the app in the emulator and keep the evidence (full, or focused on what the last fix changed)' },
+    { title: 'Capture', detail: 'play the app in the emulator and keep the evidence (full, or focused on what the last fix changed), while the logic tests run at the same time' },
     { title: 'Audit', detail: 'game-play audit and visual audit' },
     { title: 'Fix', detail: 'fix what failed' },
   ],
@@ -72,12 +72,14 @@ const captureTimeFile = (round) => `${runDirectory}/capture-r${round}-time.txt`
 // Capture copies the app here at the end of each round, so that the next
 // round can see exactly which files the fix changed.
 const capturedAppDirectory = (round) => `${runDirectory}/captured-app-r${round}`
+// Capture keeps its analysis scripts here and runs them again in later rounds.
+const captureScriptDirectory = `${runDirectory}/capture-scripts`
 const emulatorCommandPrefix = `docker compose exec -T ${boardSettings.emulatorService} area512`
 
-// Workflow stops launching agents at 1000. Each round launches 4, so stop a
+// Workflow stops launching agents at 1000. Each round launches 5, so stop a
 // round short of it and hand back a continuation.
 const AGENT_COUNT_LIMIT = 990
-const AGENT_COUNT_PER_ROUND = 4
+const AGENT_COUNT_PER_ROUND = 5
 // After this many failed rounds in a row, Fix is told to drop its earlier approaches.
 const FAIL_STREAK_FOR_NEW_APPROACH = 3
 // Fix is shown only the latest changes of a criterion, so that its prompt does not grow every round.
@@ -142,7 +144,8 @@ const COMMON_RULES = `You are one step of an unattended workflow that makes the 
 - Follow docs/app-development.md and AGENTS.md, using only the "${boardSettings.deviceColumnName}" column of the "Which device" table. The emulator service is \`${boardSettings.emulatorService}\`. The MCP server is \`${boardSettings.mcpServerName}\`; if its tools are not connected, read the signatures folder of that column instead.
 - The person asked for deeper testing than the guide's light check. In the Capture step, writing a bot, playing to the end and repeating runs are wanted.
 - Only one step uses the emulator at a time. Use it only when your step says so.
-- Run heavy computations on this machine one at a time, with \`nice -n 19\` and \`timeout\`.
+- Run heavy computations on this machine one at a time, with \`nice -n 19\` and \`timeout\`. The logic tests of a round run at the same time as the emulator work of Capture; that is the one exception.
+- Give every command that can take more than a minute (a test, a bot run, a build, a wait) its own \`timeout\`, and set the Bash tool's timeout parameter longer than it (up to 600000 ms), so that the command runs to its end in one call. The Bash tool stops a command after 2 minutes when that parameter is not set; never let it stop a command and then wait for the same command again in another call.
 - To wait for a process you started in the background, wait on its PID (\`while kill -0 <pid>\`) or on a line it writes when it ends. Never wait with \`pgrep -f <text>\` or \`pkill -f\`: the text is also in your own command, so it matches itself and waits until the timeout.
 - The definition is \`${ARGS.definitionPath}\`. Work files go in \`${runDirectory}/\`.
 - The app must never print: no \`puts\`, \`print\`, \`p\`, \`pp\` or \`printf\`, for debugging, for logging or for test evidence. What an app prints is drawn on the screen over the game and makes it flicker. Evidence comes from the screen (screenshots and the bot's \`readScreen\`), and for criteria checked by a logic test, from the output of that test. Logic tests run outside the app and may print; the app never does.
@@ -233,6 +236,29 @@ const BUILD_SCHEMA = {
     files: { type: 'array', items: { type: 'string' } },
     compileSucceeded: { type: 'boolean' },
     notes: { type: 'string' },
+  },
+}
+
+const EVIDENCE_ITEMS_SCHEMA = {
+  type: 'array',
+  items: {
+    type: 'object',
+    required: ['criterionId', 'paths', 'measurements', 'observation'],
+    properties: {
+      criterionId: { type: 'string' },
+      paths: { type: 'array', items: { type: 'string' } },
+      measurements: { type: 'string' },
+      observation: { type: 'string' },
+    },
+  },
+}
+
+const LOGIC_TEST_SCHEMA = {
+  type: 'object',
+  required: ['evidence'],
+  properties: {
+    evidence: EVIDENCE_ITEMS_SCHEMA,
+    notCaptured: { type: 'array', items: { type: 'string' }, description: 'Criterion ids without evidence, each with the reason' },
   },
 }
 
@@ -379,11 +405,26 @@ ${describeReferences(references)}
 - Finish with the guide's light check. Do not write a bot or logic tests.`
 }
 
+const logicTestStep = (round) => `Logic tests, for every criterion checked by a logic test (see "Test the logic without the screen" in the guide). They run with PicoRuby on this machine, not in the emulator, and take seconds: run them all every round.
+   - \`docker compose build picoruby\` if the image is missing.
+   - Reuse the test files of earlier rounds in \`${logicTestDirectory}/\` as they are. Change a test only when the app's change made it wrong (it no longer calls the app's methods as they are now), when the last round's time file says it must be made faster, or when an auditor's request needs something it does not do, and then change only that part. Write a new test only for a criterion that has none.
+   - Write or update the test files in \`${logicTestDirectory}/\` (\`test_<what>.rb\`). Each creates the app object, calls the app's own methods with the inputs and number of tries its criterion's "check" gives (within the time limit below), and prints the counts its pass condition needs, prefixed with the criterion id. Never write the app's logic again in a test, never replace a method of the app the criterion is about, and never change the app's files.
+   - Run \`${logicTestCommand} > ${runDirectory}/logic-r${round}-<what>.log 2>&1\`.
+   - ${LOGIC_TEST_TIME_LIMIT}
+   - Write \`${logicTestTimeFile(round)}\`: one line per test with its seconds and whether the limit stopped it, and the total.
+   - Before you write or run any test, read \`${logicTestTimeFile(round - 1)}\` if it exists. If the last round went over ${logicTestRoundLimitMinutes} minutes or the limit stopped a test, first improve the slow tests (fewer cases or tries, fixed inputs, no search inside a loop of tries) so that the whole set fits, and say what you changed in your result.
+   - If a test cannot call a rule without drawing, reading keys or waiting, that is a fault of the app: report it in the criterion's observation, as evidence of the fail.
+   - Give as evidence of each logic criterion its test file and its log, and copy the counts into measurements.`
+
+const screenCriteria = (criteria) => criteria.filter((criterion) => criterion.checkedBy !== 'logic')
+
 function capturePrompt(criteria, round, evidenceRequests, focus) {
   const screenshotPrefix = `${appName}-r${round}-`
-  const requestNote = evidenceRequests.length === 0
+  const logicIds = criteria.filter((criterion) => criterion.checkedBy === 'logic').map((criterion) => criterion.criterionId)
+  const screenRequests = evidenceRequests.filter((request) => !logicIds.includes(request.split(':')[0]))
+  const requestNote = screenRequests.length === 0
     ? ''
-    : `\nThe auditors asked for this evidence last round. Get it, in full, whatever the mode:\n${evidenceRequests.join('\n')}\n`
+    : `\nThe auditors asked for this evidence last round. Get it, in full, whatever the mode:\n${screenRequests.join('\n')}\n`
   const snapshotStep = `Last, copy the app as you captured it, for the next round: \`rm -rf ${capturedAppDirectory(round)} && cp -r ${appDirectory} ${capturedAppDirectory(round)}\`.`
   const burstCommand = `docker compose run --rm --entrypoint python3 assets -c "import sys
 from PIL import Image, ImageChops
@@ -395,35 +436,29 @@ sheet = Image.new('RGB', (frames[0].width * 5, frames[0].height * ((len(frames) 
 for index, frame in enumerate(frames):
     sheet.paste(frame, ((index % 5) * frame.width, (index // 5) * frame.height))
 sheet.save(sys.argv[1])" screenshots/${screenshotPrefix}sheet-<screen>-<idle|play>.png <the 20 screenshots in order>`
-  const logicTestStep = `Logic tests, for every criterion checked by a logic test (see "Test the logic without the screen" in the guide). They run with PicoRuby on this machine, not in the emulator, and take seconds: run them all every round.
-   - \`docker compose build picoruby\` if the image is missing.
-   - Write or update the test files in \`${logicTestDirectory}/\` (\`test_<what>.rb\`). Each creates the app object, calls the app's own methods with the inputs and number of tries its criterion's "check" gives (within the time limit below), and prints the counts its pass condition needs, prefixed with the criterion id. Never write the app's logic again in a test, never replace a method of the app the criterion is about, and never change the app's files.
-   - Run \`${logicTestCommand} > ${runDirectory}/logic-r${round}-<what>.log 2>&1\`.
-   - ${LOGIC_TEST_TIME_LIMIT}
-   - Write \`${logicTestTimeFile(round)}\`: one line per test with its seconds and whether the limit stopped it, and the total.
-   - Before you write or run any test, read \`${logicTestTimeFile(round - 1)}\` if it exists. If the last round went over ${logicTestRoundLimitMinutes} minutes or the limit stopped a test, first improve the slow tests (fewer cases or tries, fixed inputs, no search inside a loop of tries) so that the whole set fits, and say what you changed in your result.
-   - If a test cannot call a rule without drawing, reading keys or waiting, that is a fault of the app: report it in the criterion's observation, as evidence of the fail.
-   - Give as evidence of each logic criterion its test file and its log, and copy the counts into measurements.`
   const enlargeCommand = `docker compose run --rm --entrypoint python3 assets -c "import sys
 from PIL import Image
 for p in sys.argv[1:]:
     i = Image.open(p)
     i.resize((i.width * 4, i.height * 4), Image.NEAREST).save(p[:-4] + '-x4.png')" <screenshots>`
 
-  const screenshotLimitStep = `Screenshot time limit. All the emulator work of this step after the logic tests (bot runs, plays, bursts and screenshots) together takes at most ${captureRoundLimitMinutes} minutes. Before the first bot run or screenshot:
+  const screenshotLimitStep = `Screenshot time limit. All the emulator work of this step (bot runs, plays, bursts and screenshots) together takes at most ${captureRoundLimitMinutes} minutes. Before the first bot run or screenshot:
    - Read \`${captureTimeFile(round - 1)}\` if it exists. If the last round went over ${captureRoundLimitMinutes} minutes or the limit stopped a run, plan smaller this time (shorter plays, fewer screenshots, one bot run that covers several criteria) and say what you changed in your result.
    - Write \`${capturePlanFile(round)}\`: the bot runs and screenshots you will take, in order, which criteria each one gives evidence for, and the minutes each takes. The minutes add up to ${captureRoundLimitMinutes} or less. Put the criteria to check in full first.
    Then follow the plan. Note the time before the first run and give each emulator command \`timeout\` with the minutes that are left. Run each planned run once; never run one again in this step, never run in the background, and never wait past the limit. When the time is up, stop taking screenshots, list in notCaptured what the plan did not reach, and go on to the enlarging and the snapshot. Write \`${captureTimeFile(round)}\`: one line per run with its minutes and whether the limit stopped it, and the total.`
 
+  const reuseStep = `Reuse the scripts of earlier rounds. The bot \`${botPath}\` and every analysis script (measuring screenshots, counting, cropping, comparing) live as files, the analysis scripts in \`${captureScriptDirectory}/\`; never write an analysis as a one-off command. When they exist, run them as they are. Change one only when the app's change made it wrong (its reading of the screen fails or reads the wrong place), or when an auditor's request needs something it does not do, and then change only that part. Write a new script only for evidence no script gives yet, and keep it there for the next round.`
+  const logicNote = 'The logic tests are not yours: another step runs them at the same time as you, and its evidence goes to the auditors with yours. Do not run or change them, and do not report criteria checked by a logic test.'
+
   if (focus) {
     return `${COMMON_RULES}
 
-This is a focused round. Last round the criteria ${focus.failedIds.join(', ')} failed, a fix changed the app, and every other criterion passed. Check in full what the fix could have changed, and give everything else only a quick check for regressions. You are the only step using the emulator now. Do not change \`${appDirectory}/\`.
+This is a focused round. Last round the criteria ${focus.failedIds.join(', ')} failed, a fix changed the app, and every other criterion passed. Check in full what the fix could have changed, and give everything else only a quick check for regressions. You are the only step using the emulator now. Do not change \`${appDirectory}/\`. ${logicNote}
 
 1. Find what changed, from the files, not from what anyone says: \`diff -rq ${capturedAppDirectory(focus.previousRound)} ${appDirectory}\`, then \`diff -u\` each changed \`.rb\` file and each changed data file (ignore \`.mrb\`). If \`${capturedAppDirectory(focus.previousRound)}\` does not exist, you cannot tell what changed: check every criterion in full, as step 4 says, and report every criterion in fullCriteria.
-2. Decide which criteria to check in full. Always: every criterion checked by a logic test, ${focus.failedIds.join(', ')}, B1 and B2. Add every criterion that a changed file could affect: read the diff and where the changed methods, constants and data are used (grep for them in \`${appDirectory}/\`). Code that every screen draws, such as a map, a frame, a font or shared layout, touches every criterion whose screen shows it. Changed game rules, data or saving touch the game criteria that use them. When in doubt, check it in full. Report these in fullCriteria, the rest in quickCriteria, and why in affectedReasons.
+2. Decide which criteria to check in full. Always: ${focus.failedIds.join(', ')} (except those checked by a logic test), B1 and B2. Add every criterion that a changed file could affect: read the diff and where the changed methods, constants and data are used (grep for them in \`${appDirectory}/\`). Code that every screen draws, such as a map, a frame, a font or shared layout, touches every criterion whose screen shows it. Changed game rules, data or saving touch the game criteria that use them. When in doubt, check it in full. Report these in fullCriteria, the rest in quickCriteria, and why in affectedReasons.
 3. \`${emulatorCommandPrefix} reboot\`, then compile and start the app as the guide says. If it does not compile or crashes, keep a screenshot and the \`errors\` output as evidence for B1, and finish.
-3b. ${logicTestStep}
+3b. ${reuseStep}
 3c. ${screenshotLimitStep}
 4. For each screen criterion in fullCriteria, gather its evidence exactly as its "check" says, using \`${botPath}\` (update it if needed; see "Test deeper with a bot" in the guide). This includes playing to the end, the best, random and idle plays, and the B3 bursts, but only where those criteria need them. For B3 bursts, on each screen in question, take 20 screenshots back to back (\`${screenshotPrefix}burst-<screen>-<idle|play>-<nn>\`) and run:
    \`${burstCommand}\`
@@ -436,15 +471,15 @@ ${snapshotStep}
 Return the evidence of every criterion, full or quick, and say which in fullCriteria and quickCriteria. When you could not get it, say why in notCaptured; do not stop.
 
 Criteria:
-${describeCriteria(criteriaForCapture(criteria, focus.failedIds))}`
+${describeCriteria(screenCriteria(criteriaForCapture(criteria, focus.failedIds)))}`
   }
 
   return `${COMMON_RULES}
 
-Play the app in the emulator and keep the evidence the auditors need. This is a full round: check every criterion in full. You are the only step using the emulator now. Do not change \`${appDirectory}/\`.
+Play the app in the emulator and keep the evidence the auditors need. This is a full round: check every criterion in full. You are the only step using the emulator now. Do not change \`${appDirectory}/\`. ${logicNote}
 
 1. \`${emulatorCommandPrefix} reboot\`, then compile and start the app as the guide says. If it does not compile or crashes, keep a screenshot and the \`errors\` output as evidence for B1, and finish.
-2. ${logicTestStep}
+2. ${reuseStep}
 2a. ${screenshotLimitStep}
 2b. Write or update the bot \`${botPath}\`. See "Test deeper with a bot" in the guide and \`bots/snake.mjs\`. It plays the way a person would and gathers the evidence of every screen criterion's "check" below; criteria checked by a logic test are not counted again on the screen. It reads everything from the screen with \`readScreen\` and screenshots; it never uses \`serial()\` as evidence, because the app prints nothing. It prints counts and values with console.log, which \`${emulatorCommandPrefix} bot ${botPath}\` shows. Name every screenshot starting with \`${screenshotPrefix}\`, so that it lands in \`screenshots/${screenshotPrefix}*.png\`.
 3. Also play three times, one after another, each until the game ends or 3 minutes pass: "best" (the bot plays as well as it can), "random" (random valid inputs as fast as possible), "idle" (no input). Keep screenshots at the start, middle and end of each, and the \`${emulatorCommandPrefix} errors\` and \`${emulatorCommandPrefix} serial\` output after each.
@@ -459,7 +494,26 @@ ${requestNote}
 Return the evidence of every criterion. When you could not get it, say why in notCaptured; do not stop.
 
 Criteria:
-${describeCriteria(criteriaForCapture(criteria, evidenceRequests.map((request) => request.split(':')[0])))}`
+${describeCriteria(screenCriteria(criteriaForCapture(criteria, evidenceRequests.map((request) => request.split(':')[0]))))}`
+}
+
+function logicTestPrompt(criteria, round, evidenceRequests) {
+  const logicCriteria = criteria.filter((criterion) => criterion.checkedBy === 'logic')
+  const logicIds = logicCriteria.map((criterion) => criterion.criterionId)
+  const requests = evidenceRequests.filter((request) => logicIds.includes(request.split(':')[0]))
+  const requestNote = requests.length === 0
+    ? ''
+    : `\nThe auditors asked for this evidence last round. Get it:\n${requests.join('\n')}\n`
+  return `${COMMON_RULES}
+
+You run the logic tests of round ${round}. Capture uses the emulator at the same time: never use the emulator, never compile in it, and do not change \`${appDirectory}/\`.
+
+${logicTestStep(round)}
+${requestNote}
+Return the evidence of every criterion below, all checked in full. When you could not get it, say why in notCaptured; do not stop.
+
+Criteria:
+${describeCriteria(logicCriteria)}`
 }
 
 const quickAuditRule = `- Criteria listed in the evidence under quickCriteria passed last round and were given only a quick check this round, because the last fix did not touch them. For each, compare the quick screenshot with its evidence from the round it last passed. Pass when nothing it depends on has visibly changed for the worse and the quick play showed no error. If something did change, or you cannot tell, fail it with evidenceRequest asking for its full evidence; it is then checked in full next round.`
@@ -644,7 +698,21 @@ for (;;) {
   }
   log(`round ${round}: ${fullRound ? 'full' : `focused on ${focus.failedIds.join(', ')}`}`)
 
-  const capture = await runAgentUntilResult(capturePrompt(state.criteria, round, state.evidenceRequests, focus), { label: `capture r${round}${fullRound ? '' : ' focused'}`, phase: 'Capture', schema: CAPTURE_SCHEMA })
+  // The logic tests do not use the emulator, so they run at the same time as Capture.
+  const hasLogicCriteria = state.criteria.some((criterion) => criterion.checkedBy === 'logic')
+  const [screenCapture, logicTests] = await parallel([
+    () => runAgentUntilResult(capturePrompt(state.criteria, round, state.evidenceRequests, focus), { label: `capture r${round}${fullRound ? '' : ' focused'}`, phase: 'Capture', schema: CAPTURE_SCHEMA }),
+    () => hasLogicCriteria
+      ? runAgentUntilResult(logicTestPrompt(state.criteria, round, state.evidenceRequests), { label: `logic tests r${round}`, phase: 'Capture', schema: LOGIC_TEST_SCHEMA })
+      : Promise.resolve({ evidence: [], notCaptured: [] }),
+  ])
+  const logicIds = logicTests.evidence.map((entry) => entry.criterionId)
+  const capture = {
+    ...screenCapture,
+    fullCriteria: screenCapture.fullCriteria ? [...screenCapture.fullCriteria, ...logicIds] : undefined,
+    evidence: [...screenCapture.evidence, ...logicTests.evidence],
+    notCaptured: [...(screenCapture.notCaptured || []), ...(logicTests.notCaptured || [])],
+  }
 
   const gameCriteria = state.criteria.filter((criterion) => criterion.kind === 'game')
   const visualCriteria = state.criteria.filter((criterion) => criterion.kind === 'visual')
