@@ -163,17 +163,31 @@ async function runAgentUntilResult(prompt, options) {
 
 const PLAN_SCHEMA = {
   type: 'object',
-  required: ['planSummary', 'criteria'],
+  required: ['planSummary', 'expectations', 'criteria'],
   properties: {
     planSummary: { type: 'string', description: 'The rules, screens, controls and how a game ends, in a few lines' },
     defaultsTaken: { type: 'array', items: { type: 'string' } },
+    expectations: {
+      type: 'array',
+      description: 'What a player of this genre takes for granted and the definition does not say',
+      items: {
+        type: 'object',
+        required: ['lineId', 'kind', 'text', 'why'],
+        properties: {
+          lineId: { type: 'string', description: 'E1, E2, ...' },
+          kind: { type: 'string', enum: ['game', 'visual'] },
+          text: { type: 'string', description: 'The expectation, in one line, as a player would say it' },
+          why: { type: 'string', description: 'Where it is taken for granted: the real activity, or the games of the genre' },
+        },
+      },
+    },
     criteria: {
       type: 'array',
       items: {
         type: 'object',
         required: ['lineId', 'checkedBy', 'passCondition', 'howToCheck'],
         properties: {
-          lineId: { type: 'string', description: 'F1, P1, V2, ... of the line this criterion covers' },
+          lineId: { type: 'string', description: 'F1, P1, V2, E1, ... of the line or expectation this criterion covers' },
           checkedBy: { type: 'string', enum: ['logic', 'screen'], description: 'logic: a logic test runs the app\'s own code many times without the screen. screen: the bot and screenshots in the emulator' },
           passCondition: { type: 'string' },
           howToCheck: { type: 'string' },
@@ -316,6 +330,7 @@ ${missingNote}
    - howToCheck: for logic: which of the app's methods the test calls, with which inputs, how many tries, and what it counts. For screen: bot actions, when to take screenshots, what to count.
    Every condition must be possible on this board, and must not depend on exact speed: the emulator's timing is not the device's.
 3. Lines starting with P are about play: the choices the player makes, what each costs, and how hard the game is. Having a feature is never enough for them. Their criteria compare plays: the best play against random choices and against doing nothing, and two or more different strategies against each other (for example, two choices at the same price must lead to different results that each pay off somewhere). Compare strategies over many tries with logic tests; the best, random-keys and idle plays from the keys to the end stay on the screen. Write in plan.md, for each P line, the rule that makes it true, and the strategies to compare.
+4. List the expectations: what a player of this genre takes for granted, though no line says it, and would miss at once if it were not there. Think of the real thing the game shows (a sport, a vehicle, a fight, a board game) and of well-known games of the genre: how things move and act (a person who kicks, jumps or throws does it with the body, not by sliding), what happens on screen after each action, the feedback for a hit, a miss or a score, the rules everyone assumes, and the controls everyone expects. List each one that applies to this game, however obvious, not only the ones that are hard to build; most games have 5 to 15. Give each an id E1, E2, ..., a kind ("game" for rules, controls and feedback, "visual" for looks and motion), the expectation as a player would say it, and why it is taken for granted. Write them in plan.md under "Expectations", and give each one or more criteria (step 2) with its id as lineId. An expectation that a line already covers needs no entry. Motion is checked on bursts of screenshots taken during the action, not on a still.
 
 Lines:
 ${describeLines(definitionLineEntries)}`
@@ -515,15 +530,22 @@ async function makeCriteria() {
   let missingLineIds = []
   for (;;) {
     const plan = await runAgentUntilResult(planPrompt(missingLineIds), { label: 'plan', phase: 'Plan', schema: PLAN_SCHEMA })
-    const lineKindById = Object.fromEntries(definitionLineEntries.map((entry) => [entry.lineId, entry.kind]))
+    // Expectations of the genre are lines the plan adds itself (E1, E2, ...).
+    const expectations = (plan.expectations || []).filter((entry) => /^E[0-9]+$/.test(entry.lineId))
+    const lineEntries = [...definitionLineEntries, ...expectations.map((entry) => ({ lineId: entry.lineId, kind: entry.kind === 'visual' ? 'visual' : 'game', text: entry.text }))]
+    const lineKindById = Object.fromEntries(lineEntries.map((entry) => [entry.lineId, entry.kind]))
     const coveredCriteria = plan.criteria.filter((criterion) => lineKindById[criterion.lineId])
-    missingLineIds = definitionLineEntries
+    missingLineIds = lineEntries
       .map((entry) => entry.lineId)
       .filter((lineId) => !coveredCriteria.some((criterion) => criterion.lineId === lineId))
+    if (expectations.length === 0) {
+      missingLineIds = ['the expectations (step 4)']
+    }
     if (missingLineIds.length > 0) {
       log(`plan left ${missingLineIds.join(', ')} without a criterion; planning again`)
       continue
     }
+    log(`expectations: ${expectations.map((entry) => `${entry.lineId} ${entry.text}`).join(' / ')}`)
     const criterionCountByLineId = {}
     const criteria = coveredCriteria.map((criterion) => {
       criterionCountByLineId[criterion.lineId] = (criterionCountByLineId[criterion.lineId] || 0) + 1
@@ -536,7 +558,7 @@ async function makeCriteria() {
         howToCheck: criterion.howToCheck,
       }
     })
-    return { planSummary: plan.planSummary, defaultsTaken: plan.defaultsTaken || [], criteria: [...BUILT_IN_CRITERIA, ...criteria] }
+    return { planSummary: plan.planSummary, defaultsTaken: plan.defaultsTaken || [], expectations, criteria: [...BUILT_IN_CRITERIA, ...criteria] }
   }
 }
 
@@ -569,6 +591,7 @@ Return what you ran and whether the file list was shown.`, { label: 'setup', pha
   state = {
     round: 0,
     planSummary: plan.planSummary,
+    expectations: plan.expectations,
     defaultsTaken: [...plan.defaultsTaken, build.notes],
     criteria: plan.criteria,
     references: referenceSearch.references,

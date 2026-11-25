@@ -84,6 +84,8 @@ Write `workflow-runs/<name>/report.md` from the result:
 
 - each criterion: its id, the line of the definition it came from, its pass
   condition, the audit's reason and the evidence files
+- the expectations of the genre the plan added (`expectations`, the E lines):
+  each with why it is taken for granted; their criteria are listed as above
 - the reference images: path and source URL
 - `defaultsTaken`, and the look lines without a reference image
   (`linesWithoutReference`)
