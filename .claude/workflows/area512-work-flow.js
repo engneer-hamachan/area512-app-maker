@@ -178,8 +178,8 @@ function watchdogPrompt(label, files) {
 You watch another agent, "${label}", that works on the app in \`${appDirectory}/\`. You change no file except \`${files.stop}\`. You do not use the emulator.
 
 Repeat until the file \`${files.done}\` exists:
-1. Run \`for i in $(seq ${WATCH_POLL_SECONDS / 10}); do [ -f ${files.done} ] && break; sleep 10; done; date +%H:%M; tail -n 25 ${files.progress} 2>/dev/null; ls apps\` (Bash timeout ${(WATCH_POLL_SECONDS + 60) * 1000} ms).
-2. If \`${files.done}\` exists, end and return.
+1. Run \`cd "$(git rev-parse --show-toplevel)"; for i in $(seq ${WATCH_POLL_SECONDS / 10}); do [ -f ${files.done} ] && break; sleep 10; done; date +%H:%M; tail -n 25 ${files.progress} 2>/dev/null; ls apps\` (Bash timeout ${(WATCH_POLL_SECONDS + 60) * 1000} ms).
+2. If \`${files.done}\` exists, end and return. Also end and return when you wrote the stop file and no new line has been written for ${WATCH_SILENT_MINUTES} minutes since: the worker has gone.
 3. Write \`${files.stop}\` (one line: why) only when one of these is true:
    - for ${WATCH_STUCK_MINUTES} minutes or more, the lines are about one and the same problem: the same error or crash again and again, variants of one fix, searching for the cause of a fault, or probe apps made only to narrow a fault down
    - for ${WATCH_SILENT_MINUTES} minutes or more, no new line was written
@@ -197,7 +197,7 @@ async function runWatched(prompt, options) {
     try {
       return await runAgentUntilResult(prompt + watchedRules(files), options)
     } finally {
-      await agent(`Run \`mkdir -p ${progressDirectory} && touch ${files.done}\` and return "ok". Do nothing else.`, { label: `${options.label} done`, phase: options.phase, effort: 'low' })
+      await agent(`Run \`cd "$(git rev-parse --show-toplevel)" && mkdir -p ${progressDirectory} && touch ${files.done} && ls ${files.done}\` and return "ok". Do nothing else.`, { label: `${options.label} done`, phase: options.phase, effort: 'low' })
     }
   })()
   const [result, watch] = await parallel([
