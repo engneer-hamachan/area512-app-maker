@@ -367,7 +367,7 @@ const FINAL_CHECK_SCHEMA = {
 }
 
 const STOP_RULE = `- When something resists two attempts (the same error, a crash, a check that keeps failing), stop. Do not search for its root cause, do not write probe apps to narrow it down, and do not keep trying variants. Return status "blocked" with what fails, what you saw and the two things you tried. A fresh agent will change the design to avoid it.
-- Prefer a change of structure to a hunt for a cause: when an app runs out of memory, split it into more apps (\`Area512.run_next\`, passing state through a file under \`/data\`) or make a long computation run a few steps per launch; when a screen is slow, draw less per frame.
+- Prefer a change of structure to a hunt for a cause: when an app runs out of memory, split it into parts in subfolders of the app (\`apps/<name>/<part>/\`, run with \`Area512.run_next\`, passing state through a file under \`/data\`; never sibling apps) or make a long computation run a few steps per launch; when a screen is slow, draw less per frame.
 - Work only toward the goal of your step. Do not start the work of a later stage.`
 
 function planPrompt(missingLineIds) {
@@ -422,7 +422,7 @@ Review \`${runDirectory}/plan.md\` before any app code is written, and change th
 1. Read docs/app-development.md (above all "Split by role", "Memory budget" and "Hand off to another app") and plan.md.
 2. List the risks: the parts of the plan most likely to fail on the device or to take long to build. Always consider: the memory of each app at its largest moment (its files, its tables, and what it builds up over the longest case, such as the deepest stage, the longest game or the most items), the screen that draws the most per frame, and the largest set of content to make.
 3. For at most 3 risks the guide does not settle by itself, make a small probe that reproduces only the risky part (for example, the app's longest loop with empty steps, building up what the real one builds up) and run it in the emulator once. Each probe takes at most 10 minutes. Record what happened.
-4. For every risk that is not ok, change plan.md so that it holds: split an app into more apps, run a long computation a few steps per launch with its state in a file, make tables smaller, draw less. Write each change under a heading "Plan review" in plan.md. Do not change the rules of the game or the pass conditions.`
+4. For every risk that is not ok, change plan.md so that it holds: split an app into parts in its subfolders (never sibling apps), run a long computation a few steps per launch with its state in a file, make tables smaller, draw less. Write each change under a heading "Plan review" in plan.md. Do not change the rules of the game or the pass conditions.`
 
 function stagePrompt(stage, criteria, references, planSummary, attempt) {
   const retryNote = attempt.lastCheck
@@ -472,7 +472,7 @@ function redesignPrompt(stage, blockedOn) {
 The builder of stage "${stage.title}" of the app in \`${appDirectory}/\` is blocked:
 ${blockedOn}
 
-Change the design so that the problem is avoided, not explained. Do not search for its root cause and do not write probes. Read docs/app-development.md (above all "Memory budget" and "Hand off to another app") and \`${runDirectory}/plan.md\`, then choose the change of structure that makes the problem impossible: split an app into more apps, run a long computation a few steps per launch with its state in a file, keep a table as a packed string read one row at a time, draw less per frame, or make a set of content simpler. Keep the rules of the game and the pass conditions.
+Change the design so that the problem is avoided, not explained. Do not search for its root cause and do not write probes. Read docs/app-development.md (above all "Memory budget" and "Hand off to another app") and \`${runDirectory}/plan.md\`, then choose the change of structure that makes the problem impossible: split an app into parts in its subfolders (never sibling apps), run a long computation a few steps per launch with its state in a file, keep a table as a packed string read one row at a time, draw less per frame, or make a set of content simpler. Keep the rules of the game and the pass conditions.
 
 Write the change in plan.md under the heading "Redesign: ${stage.key}", as instructions the builder can follow. Do not change \`apps/\`.`
 }

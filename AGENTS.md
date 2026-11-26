@@ -63,7 +63,9 @@ as a pull request. `apps/` here is ignored by git, so orz-games is where an app 
 - Copy `apps/<name>/` to `orz-games/apps/<name>/`: the `.rb` files, the compiled
   `.mrb` files, `main.manifest`, `.a5d` images, `image.h`, data files and a
   `README.md` (what the app is, its keys, what it keeps). Do not copy
-  `.ti-loader.manifest`.
+  `.ti-loader.manifest`. An app split into parts keeps them as subfolders of
+  `apps/<name>/` (see "Hand off to another app" in the guide); copy them the
+  same way, inside `orz-games/apps/<name>/`, never as apps of their own.
 - Copy the screenshot you checked, at 4x (`screenshots/<name>-...-x4.png`, or
   enlarge it to 4x), to `orz-games/apps/<name>/screenshot.png`.
 - Work on a new branch in orz-games named after the app, commit, push, and open a

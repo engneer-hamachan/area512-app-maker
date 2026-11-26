@@ -188,7 +188,22 @@ large app; finding them out while building costs hours.
 
 When one app cannot fit in the memory, even split by role, split it into apps
 and switch between them with `Area512.run_next(path)`: when the current app
-returns, the file manager runs `path` right away, such as `/home/apps/<name>-battle`.
+returns, the file manager runs `path` right away.
+
+Put each part in a subfolder of the app, never next to it as another app
+(`apps/<name>-battle/`): an app is installed and published as one folder.
+
+```text
+apps/<name>/            # the app the person starts: /home/apps/<name>
+├── main.manifest
+├── main.rb             # Area512.run_next("/home/apps/<name>/battle")
+└── battle/             # a part: /home/apps/<name>/battle
+    ├── main.manifest
+    └── main.rb         # Area512.run_next("/home/apps/<name>") to go back
+```
+
+Each subfolder has its own `main.manifest` and `.ti-loader.manifest`, and is
+compiled on its own: `docker compose run --rm compiler apps/<name>/battle`.
 Pass what the next app needs through a file under `/data` with `SD.write`, and
 read it back with `SD.read`. See "Area512" in `docs/reference/ruby-api.md`.
 
