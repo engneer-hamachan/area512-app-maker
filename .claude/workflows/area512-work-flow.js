@@ -8,6 +8,7 @@ export const meta = {
     { title: 'References', detail: 'find reference images on the web' },
     { title: 'Plan review', detail: 'check the plan against the guide and try its riskiest parts in small probes before any app code' },
     { title: 'Build', detail: 'write the app in stages, each checked by a fresh agent before the next starts' },
+    { title: 'Final check', detail: 'play the finished game and fix only the bugs that stop a person from playing it' },
   ],
 }
 
@@ -351,6 +352,20 @@ const PLAN_REVIEW_SCHEMA = {
   },
 }
 
+
+const FINAL_CHECK_SCHEMA = {
+  type: 'object',
+  required: ['playable', 'fatalBugsFixed', 'fatalBugsLeft', 'notes'],
+  properties: {
+    status: { type: 'string', enum: ['done', 'blocked'], description: 'blocked: a fatal bug resisted two attempts or the watchdog asked you to stop' },
+    blockedOn: { type: 'string' },
+    playable: { type: 'boolean', description: 'Whether a person can now play the whole game from the file list to the end and back, with nothing that stops the play' },
+    fatalBugsFixed: { type: 'array', items: { type: 'string' }, description: 'Each fatal bug found and fixed: what happened, and what was changed' },
+    fatalBugsLeft: { type: 'array', items: { type: 'string' }, description: 'Each fatal bug found and not fixed, with what was seen' },
+    notes: { type: 'string' },
+  },
+}
+
 const STOP_RULE = `- When something resists two attempts (the same error, a crash, a check that keeps failing), stop. Do not search for its root cause, do not write probe apps to narrow it down, and do not keep trying variants. Return status "blocked" with what fails, what you saw and the two things you tried. A fresh agent will change the design to avoid it.
 - Prefer a change of structure to a hunt for a cause: when an app runs out of memory, split it into more apps (\`Area512.run_next\`, passing state through a file under \`/data\`) or make a long computation run a few steps per launch; when a screen is slow, draw less per frame.
 - Work only toward the goal of your step. Do not start the work of a later stage.`
@@ -494,6 +509,25 @@ async function runBuildStage(stage, criteria, references, planSummary) {
   return outcome
 }
 
+// The last gate: play the finished game, and fix only what stops a person from
+// playing it. Looks, balance and polish are left as they are.
+function finalCheckPrompt(planSummary) {
+  return `${COMMON_RULES}
+
+Play the finished app in \`${appDirectory}/\` (and its other apps, if the plan has several) in the emulator as a person would, and fix only fatal bugs. You may use the emulator.
+
+Plan: ${planSummary}
+
+1. Compile every app of the plan. From the file list, play the whole game: every screen of the plan, one whole play to its end (and, with a switch for checks only or a save that starts there, the longest case and the ending), then back to the first screen; quit and start again, and check that what is kept is still there. Run \`area512 errors\` and \`area512 serial\` after the play.
+2. A fatal bug is one that stops a person from playing: a Ruby error on the screen, "Out of memory" or a crash, a black or frozen screen, a screen that keys cannot leave, a play that never ends, a save that is lost or broken, or a main action of the plan that does nothing. Nothing else is fatal: not the look, the wording, the layout, the balance or the speed.
+3. Fix each fatal bug with the smallest change that makes the game playable, then play that part again to see it fixed. Change nothing that is not part of a fatal bug.
+4. Play the whole game once more from the file list after the last fix.
+
+${STOP_RULE}
+- Check every method with the MCP before you call it. Keep each file the size the guide gives.
+- Add what you found and fixed to \`${runDirectory}/build-log.md\` under the heading "Final check".`
+}
+
 async function makeCriteria() {
   let missingLineIds = []
   for (;;) {
@@ -572,6 +606,9 @@ Return what you ran and whether the file list was shown.`, { label: 'setup', pha
   if (overrides.length > 0) {
     log(`criteria changed by the person: ${overrides.map((entry) => entry.criterionId).join(', ')}`)
   }
+  phase('Final check')
+  const finalCheck = await runWatched(finalCheckPrompt(plan.planSummary), { label: 'final check', phase: 'Final check', schema: FINAL_CHECK_SCHEMA })
+  log(`final check: ${finalCheck.playable ? 'playable' : 'not playable'}; fixed ${finalCheck.fatalBugsFixed.length}, left ${finalCheck.fatalBugsLeft.length}`)
   const build = {
     notes: stageOutcomes.map((outcome) => `${outcome.key}: ${outcome.passed ? 'done' : `not reached (${outcome.lastReason})`}${outcome.redesigns.length ? `; redesigned: ${outcome.redesigns.join(' / ')}` : ''}`).join('\n'),
   }
@@ -582,6 +619,7 @@ Return what you ran and whether the file list was shown.`, { label: 'setup', pha
     defaultsTaken: [...plan.defaultsTaken, build.notes],
     planChanges: planReview.planChanges,
     stageOutcomes,
+    finalCheck,
     criteria: applyOverrides(plan.criteria),
     references: referenceSearch.references,
     linesWithoutReference: referenceSearch.linesWithoutReference,

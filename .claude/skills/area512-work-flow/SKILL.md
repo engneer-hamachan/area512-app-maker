@@ -1,6 +1,6 @@
 ---
 name: area512-work-flow
-description: Make an Area512 game from a game definition file (game-definitions/*.md). First hear the person out, one question at a time, to draw out what they want the game to be, and turn it yourself into design decisions and the bounds of the build, written into the definition; then, without asking anything more, review the plan with small probes and build the game in stages, each checked by a fresh agent before the next starts. Use only when the person runs /area512-work-flow <definition file>.
+description: Make an Area512 game from a game definition file (game-definitions/*.md). First hear the person out, one question at a time, to draw out what they want the game to be, and turn it yourself into design decisions and the bounds of the build, written into the definition; then, without asking anything more, review the plan with small probes, build the game in stages, each checked by a fresh agent before the next starts, and finally play it through and fix only the bugs that stop it from being played. Use only when the person runs /area512-work-flow <definition file>.
 argument-hint: <definition file>
 ---
 
@@ -170,7 +170,9 @@ steps use the emulator one at a time.
 - If the run fails, start it again with `resumeFromRunId` and the same
   `scriptPath`, so that the steps already done are not run again.
 
-The run ends when the last build stage is done. A stage whose check still
+After the last build stage, a final check plays the whole game and fixes only
+fatal bugs (an error, a crash, a frozen screen, a lost save, a play that cannot
+go on). The run then ends. A stage whose check still
 fails after its tries, or whose builder stays blocked after its redesigns,
 is not run again: the run goes on and returns it in `unreachedStages`. Do not
 run the workflow again for it: report it.
@@ -181,6 +183,8 @@ Write `workflow-runs/<name>/report.md` from the result:
 
 - each build stage (`stageOutcomes`): its goal, whether its check passed, the
   number of attempts, the reason of its last check and the redesigns it needed
+- the final check (`finalCheck`): whether the game is playable, the fatal
+  bugs it fixed and the ones it left
 - each criterion: its id, the line of the definition it came from and its
   pass condition
 - the expectations of the genre the plan added (`expectations`, the E lines):
@@ -189,8 +193,9 @@ Write `workflow-runs/<name>/report.md` from the result:
 - the reference images: path and source URL
 - `defaultsTaken`, and the look lines without a reference image
   (`linesWithoutReference`)
-- if `unreachedStages` is not empty: each of them with the reason of its last
-  check, first in the report and in your message to the person
+- if `unreachedStages` is not empty, or the final check left fatal bugs: each
+  of them with what was seen, first in the report and in your message to the
+  person
 
 Then tell the person that it is done, where the report is, and how to try the
 app:

@@ -4,8 +4,8 @@
 Copy this file to game-definitions/<name>.md, fill it in, and start with
   /area512-work-flow game-definitions/<name>.md
 It first asks you about the game, one question at a time. Once started, it
-does not stop until the last build stage is done; each stage is checked
-before the next one starts.
+does not stop until the last build stage is done and the game has been played
+through once; each stage is checked before the next one starts.
 Do not add reference images. The agent finds them on the web from "Look".
 -->
 
