@@ -354,7 +354,7 @@ Design the game and fix the pass conditions the audits will use. Write only in \
 Genre: ${ARGS.genre}
 Controls: ${boardSettings.inputDescription}.
 ${missingNote}
-1. Read the definition and docs/app-development.md. Write \`${runDirectory}/plan.md\`: the rules, what is on each screen, the controls, how a game ends and what is kept after quitting. Keep it within the board's screen and memory as the guide gives them. Estimate the memory as "Memory budget" in the guide says, and if one app cannot hold it, plan the split into apps here, with what each app holds and what they pass to each other. Add a section "Blinking" that lists each item that blinks by design, and why that kind of game has it; write "none" when nothing does.
+1. Read the definition and docs/app-development.md. Write \`${runDirectory}/plan.md\`: the rules, what is on each screen, the controls, how a game ends and what is kept after quitting. Keep it within the board's screen and memory as the guide gives them. If the app is large, plan it as several apps from the start. Add a section "Blinking" that lists each item that blinks by design, and why that kind of game has it; write "none" when nothing does.
 2. For every line below, write one or more criteria with:
    - checkedBy: "logic" or "screen". See "Test the logic without the screen" in the guide.
      - logic: what the rules and numbers of the game decide, above all what needs many tries to show: random setups and their ranges, odds, physics results, what an opponent decides, difficulty from stage to stage, scores, which choice or strategy pays off over many tries. A logic test runs the app's own code many times, as fast as the VM can, without the screen.
