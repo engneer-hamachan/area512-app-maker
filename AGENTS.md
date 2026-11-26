@@ -33,9 +33,13 @@ The person may know nothing about Area512, Ruby or the Cardputer.
 - Check every method with the picoruby-ti MCP of the app's device before you call
   it (`picoruby-ti-2432s028` for the 2432S028), and do not use its `diagnostic`
   tool. See "Which device" and "Check that a method exists" in the guide.
-  If the MCP is not connected, check the methods in the signature files the
-  guide names instead (`docs/reference/sig/`, or `docs/reference/sig-2432s028/`
-  for the 2432S028). This is the same check; the app work does not stop for it.
+  Its tools may be listed only by name (deferred): that means connected. Load
+  them with ToolSearch (`select:mcp__picoruby-ti__classes,mcp__picoruby-ti__methods,mcp__picoruby-ti__hover,mcp__picoruby-ti__completion`)
+  and call them; do not read or search the signature files instead.
+  Only if ToolSearch finds no picoruby-ti tool is the MCP not connected: then
+  check the methods in the signature files the guide names (`docs/reference/sig/`,
+  or `docs/reference/sig-2432s028/` for the 2432S028). This is the same check;
+  the app work does not stop for it.
 - When an app is written, do a light check and stop: compile it, run it in the
   emulator, try its main action, and look at one screenshot. Test further only
   when the person asks.

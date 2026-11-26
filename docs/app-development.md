@@ -55,7 +55,7 @@ service names of its column in their place, for example
 
 | You need | Look in |
 |---|---|
-| Classes and methods, with argument types | the MCP, or `docs/reference/sig/*.rbs` (2432S028: `docs/reference/sig-2432s028/*.rbs`) |
+| Classes and methods, with argument types | the MCP (the `.rbs` files only when it is not connected) |
 | What each API is for | `docs/reference/ruby-api.md` |
 | Screens, lists, menus, dialogs, colors | `docs/reference/widget-api.md` |
 | A small game: board, keys, drawing | `docs/reference/examples/bomb/` |
@@ -97,7 +97,16 @@ path from your machine is not found: the server runs in a container. `line` and
 - `methods` on a class of your own leaves out each method whose return type it
   cannot work out. Read your own code for those.
 
-If the MCP tools are not connected, read `docs/reference/sig/*.rbs`
+The tools are often deferred: listed by name only, with no schema. That is
+connected, not missing. Load them once per session with ToolSearch, then call
+them:
+
+```
+ToolSearch("select:mcp__picoruby-ti__classes,mcp__picoruby-ti__methods,mcp__picoruby-ti__hover,mcp__picoruby-ti__completion")
+```
+
+While the MCP server runs, a hook blocks reading the signature files. Only if
+ToolSearch finds no picoruby-ti tool, read `docs/reference/sig/*.rbs`
 (2432S028: `docs/reference/sig-2432s028/*.rbs`), which is what they are built
 from.
 

@@ -10,3 +10,7 @@ emulator (`emulator-browser` or `emulator-browser-2432s028`), the MCP server
 (`picoruby-ti` or `picoruby-ti-2432s028`), the signatures, the examples, the
 memory (100 KB or 80 KB), the input (keys or touch buttons) and `area512-send
 --board`.
+
+Check methods with the MCP tools (`mcp__picoruby-ti__methods` and the rest),
+not by reading `docs/reference/sig*/`. If they are listed by name only, load
+them with ToolSearch first; see "Check that a method exists" in the guide.
