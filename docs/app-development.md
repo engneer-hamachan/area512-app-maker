@@ -159,6 +159,16 @@ large app; finding them out while building costs hours.
   splitting a long text into hundreds of small strings at once, can exhaust the
   memory although the code fits. Append to one string with `<<`, and read
   numbers out of a text in place.
+- A long computation fills the memory as it runs, although every file fits:
+  a game that simulates many stages, turns or items in one launch can stop
+  with "Out of memory" partway. Plan it from the start to run a few steps per
+  launch: keep its state in a file under `/data`, and let the app start
+  itself again with `Area512.run_next` until it is done (see "Hand off to
+  another app"). Each launch starts with the memory empty.
+- When "Out of memory" appears, change the structure (split the app into
+  more apps, run fewer steps per launch, keep tables packed) instead of
+  searching for what fills the memory: the search costs hours, the split
+  minutes.
 - In the emulator, running out of memory may not print "Out of memory": the
   screen stays black and the browser reports `Aborted()`. A black screen right
   after loading means the app does not fit.

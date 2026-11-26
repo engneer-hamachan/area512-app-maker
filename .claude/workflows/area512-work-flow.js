@@ -6,7 +6,8 @@ export const meta = {
     { title: 'Setup', detail: 'build and start the emulator of the board' },
     { title: 'Plan', detail: 'turn each line of the definition into pass conditions' },
     { title: 'References', detail: 'find reference images on the web' },
-    { title: 'Build', detail: 'write the app' },
+    { title: 'Plan review', detail: 'check the plan against the guide and try its riskiest parts in small probes before any app code' },
+    { title: 'Build', detail: 'write the app in stages, each checked by a fresh agent before the next starts' },
     { title: 'Capture', detail: 'play the app in the emulator and keep the evidence (full, or focused on what the last fix changed), while the logic tests run at the same time' },
     { title: 'Audit', detail: 'game-play audit and visual audit' },
     { title: 'Fix', detail: 'fix what failed' },
@@ -163,13 +164,87 @@ const describeReferences = (references) => references.length === 0
 
 let launchedAgentCount = 0
 
+const EMPTY_RESULT_RETRY_LIMIT = 3
+
 async function runAgentUntilResult(prompt, options) {
-  for (;;) {
+  for (let attempt = 1; ; attempt++) {
     launchedAgentCount++
     const result = await agent(prompt, options)
     if (result) return result
+    if (attempt >= EMPTY_RESULT_RETRY_LIMIT) {
+      throw new Error(`${options.label} returned nothing ${attempt} times`)
+    }
     log(`${options.label} returned nothing; running it again`)
   }
+}
+
+
+// Watchdog. The workflow cannot stop an agent from outside, so a worker and a
+// watchdog talk through files: the worker appends one line per step to its
+// progress file and checks its stop file before each step; the watchdog reads
+// the progress file every few minutes and writes the stop file when the
+// worker is going round in circles. When the worker has returned, the script
+// writes the done file and the watchdog ends.
+const progressDirectory = `${runDirectory}/progress`
+const WATCH_POLL_SECONDS = 180
+const WATCH_STUCK_MINUTES = 10
+const WATCH_SILENT_MINUTES = 15
+let watchCount = 0
+
+const WATCH_SCHEMA = {
+  type: 'object',
+  required: ['stopped', 'reason'],
+  properties: {
+    stopped: { type: 'boolean', description: 'Whether you wrote the stop file' },
+    reason: { type: 'string' },
+  },
+}
+
+function watchedRules(files) {
+  return `
+- Progress file: after each step of your work (a file written, a compile, an emulator run, a check), append one line to \`${files.progress}\`: \`date +%H:%M\`, then what you did and what came out, in a few words. Start with a line saying what you are about to do.
+- Stop file: before each step, run \`cat ${files.stop} 2>/dev/null\`. If it prints anything, a watchdog has seen you going round in circles: stop at once, and return status "blocked" with what it says and what you were trying.`
+}
+
+function watchdogPrompt(label, files) {
+  return `${COMMON_RULES}
+
+You watch another agent, "${label}", that works on the app in \`${appDirectory}/\`. You change no file except \`${files.stop}\`. You do not use the emulator.
+
+Repeat until the file \`${files.done}\` exists:
+1. Run \`for i in $(seq ${WATCH_POLL_SECONDS / 10}); do [ -f ${files.done} ] && break; sleep 10; done; date +%H:%M; tail -n 25 ${files.progress} 2>/dev/null; ls apps\` (Bash timeout ${(WATCH_POLL_SECONDS + 60) * 1000} ms).
+2. If \`${files.done}\` exists, end and return.
+3. Write \`${files.stop}\` (one line: why) only when one of these is true:
+   - for ${WATCH_STUCK_MINUTES} minutes or more, the lines are about one and the same problem: the same error or crash again and again, variants of one fix, searching for the cause of a fault, or probe apps made only to narrow a fault down
+   - for ${WATCH_SILENT_MINUTES} minutes or more, no new line was written
+   - it is tuning numbers beyond the tries its task allows
+   Steady work that moves on (new files, new screens, a different problem each time) is not stuck, however long it takes. Write the stop file at most once.
+
+Return whether you wrote the stop file, and why.`
+}
+
+async function runWatched(prompt, options) {
+  watchCount++
+  const base = `${progressDirectory}/${watchCount}-${options.label.replace(/[^a-z0-9]+/gi, '-')}`
+  const files = { progress: `${base}.log`, stop: `${base}.stop`, done: `${base}.done` }
+  const work = (async () => {
+    try {
+      return await runAgentUntilResult(prompt + watchedRules(files), options)
+    } finally {
+      await agent(`Run \`mkdir -p ${progressDirectory} && touch ${files.done}\` and return "ok". Do nothing else.`, { label: `${options.label} done`, phase: options.phase, effort: 'low' })
+    }
+  })()
+  const [result, watch] = await parallel([
+    () => work,
+    () => agent(watchdogPrompt(options.label, files), { label: `watch ${options.label}`, phase: options.phase, effort: 'low', schema: WATCH_SCHEMA }),
+  ])
+  if (watch && watch.stopped) {
+    log(`watchdog stopped ${options.label}: ${watch.reason}`)
+  }
+  if (!result) {
+    throw new Error(`${options.label} failed`)
+  }
+  return result
 }
 
 const PLAN_SCHEMA = {
@@ -229,15 +304,91 @@ const REFERENCES_SCHEMA = {
   },
 }
 
-const BUILD_SCHEMA = {
+
+
+// Build stages. Each stage is one agent with one goal it can reach. The script,
+// not the agent, decides when a stage is done: a fresh agent checks the goal.
+// An agent that cannot get past a problem returns `blocked` instead of
+// searching for the cause; a fresh architect agent then changes the design
+// so that the problem is avoided, and the stage runs again.
+const BUILD_STAGES = [
+  {
+    key: 'skeleton',
+    title: 'every screen, end to end, with plain shapes',
+    goal: 'Every app and every screen of the plan exists and works with plain stand-ins (rectangles, plain text) instead of art. In the emulator, one whole play runs from the file list through every screen of the plan to the end of a play and back to the first screen, including the longest case the game allows (the deepest stage, the longest game, the most items), with no Ruby error, no "Out of memory" and nothing from `area512 errors`. The rules and numbers are those of the plan as they are; nothing is tuned.',
+  },
+  {
+    key: 'content',
+    title: 'art, motion and all content',
+    goal: 'Every picture, animation and content set of the plan exists, first all of it at a plain level, then polished, matching the reference images. Every screen still runs end to end as in the last stage, with no error and no "Out of memory".',
+  },
+  {
+    key: 'numbers',
+    title: 'tuning against the pass lines',
+    goal: 'The numbers the plan fixed are checked against the pass lines of the definition and the plan with logic tests, and changed only where a line is missed. At most 2 tuning tries, each run under 2 minutes. When the tries are used up, the best try is kept and how far it is from each line is written in the build log.',
+  },
+]
+
+// How often one stage may go round: checks that fail, and blocks that need a
+// new design. When either runs out, the stage stops and the run goes on; its
+// shortfall is reported, and the audit rounds see what is missing.
+const STAGE_ATTEMPT_LIMIT = 3
+const STAGE_REDESIGN_LIMIT = 2
+
+const STAGE_SCHEMA = {
   type: 'object',
-  required: ['files', 'compileSucceeded', 'notes'],
+  required: ['status', 'whatWasDone', 'notes'],
   properties: {
-    files: { type: 'array', items: { type: 'string' } },
-    compileSucceeded: { type: 'boolean' },
+    status: { type: 'string', enum: ['done', 'blocked'], description: 'done: the stage goal is reached as far as you can tell. blocked: a problem stopped you; you did not search for its cause' },
+    whatWasDone: { type: 'string' },
+    blockedOn: { type: 'string', description: 'When blocked: what fails, what you saw (error text, screenshot path), and the two things you tried' },
     notes: { type: 'string' },
   },
 }
+
+const STAGE_CHECK_SCHEMA = {
+  type: 'object',
+  required: ['passed', 'reason', 'evidencePaths'],
+  properties: {
+    passed: { type: 'boolean' },
+    reason: { type: 'string', description: 'What was run and seen; when failed, what is missing or broken, concretely' },
+    evidencePaths: { type: 'array', items: { type: 'string' } },
+  },
+}
+
+const REDESIGN_SCHEMA = {
+  type: 'object',
+  required: ['change', 'planSection'],
+  properties: {
+    change: { type: 'string', description: 'The change of design that avoids the problem, as instructions for the builder' },
+    planSection: { type: 'string', description: 'The heading under which it was written in plan.md' },
+  },
+}
+
+const PLAN_REVIEW_SCHEMA = {
+  type: 'object',
+  required: ['risks', 'planChanges'],
+  properties: {
+    risks: {
+      type: 'array',
+      items: {
+        type: 'object',
+        required: ['risk', 'probe', 'result', 'ok'],
+        properties: {
+          risk: { type: 'string' },
+          probe: { type: 'string', description: 'What was tried, or "read only" when the guide settles it' },
+          result: { type: 'string' },
+          ok: { type: 'boolean' },
+        },
+      },
+    },
+    planChanges: { type: 'array', items: { type: 'string' } },
+  },
+}
+
+const STOP_RULE = `- When something resists two attempts (the same error, a crash, a check that keeps failing), stop. Do not search for its root cause, do not write probe apps to narrow it down, and do not keep trying variants. Return status "blocked" with what fails, what you saw and the two things you tried. A fresh agent will change the design to avoid it.
+- Prefer a change of structure to a hunt for a cause: when an app runs out of memory, split it into more apps (\`Area512.run_next\`, passing state through a file under \`/data\`) or make a long computation run a few steps per launch; when a screen is slow, draw less per frame.
+- Work only toward the goal of your step. Do not start the work of a later stage.`
 
 const EVIDENCE_ITEMS_SCHEMA = {
   type: 'array',
@@ -328,6 +479,8 @@ const FIX_SCHEMA = {
   type: 'object',
   required: ['changes', 'compileSucceeded'],
   properties: {
+    status: { type: 'string', enum: ['done', 'blocked'], description: 'blocked: you stopped because a change resisted two attempts or the watchdog asked you to stop' },
+    blockedOn: { type: 'string' },
     changes: {
       type: 'array',
       items: {
@@ -386,23 +539,100 @@ ${describeLines(visualLineEntries)}
 - Look at each image with Read. Keep 3 to 8 that match. For each, say which lines it is for and what to take from it.
 - Every look line should have a reference. List the lines you could not find one for; do not stop over them.`
 
-function buildPrompt(criteria, references, planSummary) {
+
+
+const planReviewPrompt = `${COMMON_RULES}
+
+Review \`${runDirectory}/plan.md\` before any app code is written, and change the plan where it will not hold on the device. You may use the emulator. Write only in \`${runDirectory}/\`; probes go in \`${runDirectory}/probes/\` and are copied to \`apps/<probe name>/\` only while they run, then removed from \`apps/\`.
+
+1. Read docs/app-development.md (above all "Split by role", "Memory budget" and "Hand off to another app") and plan.md.
+2. List the risks: the parts of the plan most likely to fail on the device or to take long to build. Always consider: the memory of each app at its largest moment (its files, its tables, and what it builds up over the longest case, such as the deepest stage, the longest game or the most items), the screen that draws the most per frame, and the largest set of content to make.
+3. For at most 3 risks the guide does not settle by itself, make a small probe that reproduces only the risky part (for example, the app's longest loop with empty steps, building up what the real one builds up) and run it in the emulator once. Each probe takes at most 10 minutes. Record what happened.
+4. For every risk that is not ok, change plan.md so that it holds: split an app into more apps, run a long computation a few steps per launch with its state in a file, make tables smaller, draw less. Write each change under a heading "Plan review" in plan.md. Do not change the rules of the game or the pass conditions.`
+
+function stagePrompt(stage, criteria, references, planSummary, attempt) {
+  const retryNote = attempt.lastCheck
+    ? `\nThe last check of this stage failed: ${attempt.lastCheck.reason}\nEvidence: ${(attempt.lastCheck.evidencePaths || []).join(', ')}\nFix what it names.\n`
+    : ''
+  const redesignNote = attempt.redesigns.length > 0
+    ? `\nThe design was changed to get past an earlier block of this stage (see plan.md):\n${attempt.redesigns.map((change) => `- ${change}`).join('\n')}\nBuild to the changed design.\n`
+    : ''
   return `${COMMON_RULES}
 
-Write the app in \`${appDirectory}/\`, following steps 2 to 7 of docs/app-development.md and \`${runDirectory}/plan.md\`. You may use the emulator.
+Build stage "${stage.title}" of the app in \`${appDirectory}/\` (and its other apps, if the plan has several), following docs/app-development.md and \`${runDirectory}/plan.md\`. You may use the emulator.
 
+Goal of this stage: ${stage.goal}
+${retryNote}${redesignNote}
 Plan: ${planSummary}
 
-It must meet every criterion below. Read them before you lay out the files.
+The app will be audited against these criteria. In this stage, build only toward the goal above; read them so that what you build now does not stand in their way.
 ${describeCriteria(criteria)}
 
-Match these reference images; open each with Read:
+Reference images; open each with Read:
 ${describeReferences(references)}
 
-- Check every method with the MCP before you call it. Keep each file the size the guide gives, or the device runs out of memory.
-- If \`${appDirectory}/\` already has an app, build on it instead of starting over. Remove every \`puts\`, \`print\`, \`p\`, \`pp\` and \`printf\` it has.
-- Keep every rule in a method that takes values and returns or stores a result, without drawing, reading keys or waiting, and let creating the app object and setting up its state neither draw nor wait, so that logic tests can call the same methods (see "Test the logic without the screen" in the guide). End the last file of the manifest with the one line that starts the app.
-- Finish with the guide's light check. Do not write a bot or logic tests.`
+${STOP_RULE}
+- Check every method with the MCP before you call it. Keep each file the size the guide gives.
+- Build on what the apps already have; never start over. Remove every \`puts\`, \`print\`, \`p\`, \`pp\` and \`printf\` you find.
+- Keep every rule in a method that takes values and returns or stores a result, without drawing, reading keys or waiting, and let creating the app object and setting up its state neither draw nor wait, so that logic tests can call the same methods. End the last file of each manifest with the one line that starts the app.
+- Add what you did to \`${runDirectory}/build-log.md\` under the heading of this stage.
+- Do not write a bot or the audit's logic tests.`
+}
+
+function stageCheckPrompt(stage) {
+  return `${COMMON_RULES}
+
+Check whether stage "${stage.title}" of the app in \`${appDirectory}/\` reached its goal. You did not build it: check it as it is, and change nothing in \`apps/\`. You may use the emulator.
+
+Goal: ${stage.goal}
+
+- Compile every app of the plan and run it in the emulator as the goal says, from the file list. Take screenshots of what the goal names and look at them with Read. Run \`area512 errors\` after the play.
+- To see a long or late case without waiting through it, use a switch for checks only that the plan names, or a save that starts there.
+- Pass only when everything the goal names was seen working. When it fails, say concretely what is missing or broken, with the screenshot paths.
+- Finish within 15 minutes.`
+}
+
+function redesignPrompt(stage, blockedOn) {
+  return `${COMMON_RULES}
+
+The builder of stage "${stage.title}" of the app in \`${appDirectory}/\` is blocked:
+${blockedOn}
+
+Change the design so that the problem is avoided, not explained. Do not search for its root cause and do not write probes. Read docs/app-development.md (above all "Memory budget" and "Hand off to another app") and \`${runDirectory}/plan.md\`, then choose the change of structure that makes the problem impossible: split an app into more apps, run a long computation a few steps per launch with its state in a file, keep a table as a packed string read one row at a time, draw less per frame, or make a set of content simpler. Keep the rules of the game and the pass conditions.
+
+Write the change in plan.md under the heading "Redesign: ${stage.key}", as instructions the builder can follow. Do not change \`apps/\`.`
+}
+
+async function runBuildStage(stage, criteria, references, planSummary) {
+  const attempt = { lastCheck: null, redesigns: [] }
+  const outcome = { key: stage.key, passed: false, attempts: 0, redesigns: attempt.redesigns, lastReason: '' }
+  while (outcome.attempts < STAGE_ATTEMPT_LIMIT) {
+    outcome.attempts++
+    const label = `build ${stage.key} #${outcome.attempts}`
+    const result = await runWatched(stagePrompt(stage, criteria, references, planSummary, attempt), { label, phase: 'Build', schema: STAGE_SCHEMA })
+    if (result.status === 'blocked') {
+      log(`${label}: blocked: ${result.blockedOn || '(no detail)'}`)
+      outcome.lastReason = result.blockedOn || ''
+      if (attempt.redesigns.length >= STAGE_REDESIGN_LIMIT) {
+        log(`${stage.key}: redesign limit reached; going on`)
+        break
+      }
+      const redesign = await runAgentUntilResult(redesignPrompt(stage, result.blockedOn || result.whatWasDone), { label: `redesign ${stage.key}`, phase: 'Build', schema: REDESIGN_SCHEMA })
+      attempt.redesigns.push(redesign.change)
+      attempt.lastCheck = null
+      outcome.attempts--
+      continue
+    }
+    const check = await runAgentUntilResult(stageCheckPrompt(stage), { label: `check ${stage.key} #${outcome.attempts}`, phase: 'Build', schema: STAGE_CHECK_SCHEMA })
+    log(`check ${stage.key} #${outcome.attempts}: ${check.passed ? 'passed' : `failed: ${check.reason}`}`)
+    if (check.passed) {
+      outcome.passed = true
+      return outcome
+    }
+    attempt.lastCheck = check
+    outcome.lastReason = check.reason
+  }
+  return outcome
 }
 
 const logicTestStep = (round) => `Logic tests, for every criterion checked by a logic test (see "Test the logic without the screen" in the guide). They run with PicoRuby on this machine, not in the emulator, and take seconds: run them all every round.
@@ -589,6 +819,7 @@ Change the app so that the failed criteria below pass, without breaking the ones
 - A fail whose auditor only asks for evidence (evidenceRequest) and finds no fault in the app needs no change to the app; leave it to Capture.
 - Never add \`puts\`, \`print\`, \`p\`, \`pp\` or \`printf\` to the app, not even for a while. Remove any you find.
 - Check every method with the MCP before you call it. Keep each file the size the guide gives.
+- When a failure resists two attempts, stop changing variants and change the structure instead (split an app, run a long computation a few steps per launch, draw less). Never search for a root cause with probe apps.
 - Finish with \`compile --all\` in the emulator.
 
 Failed:
@@ -660,15 +891,40 @@ Return what you ran and whether the file list was shown.`, { label: 'setup', pha
     log(`no reference image for ${referenceSearch.linesWithoutReference.join(', ')}`)
   }
 
+  phase('Plan review')
+  const planReview = await runAgentUntilResult(planReviewPrompt, { label: 'plan review', phase: 'Plan review', schema: PLAN_REVIEW_SCHEMA })
+  log(`plan review: ${planReview.planChanges.length} change(s)${planReview.planChanges.length ? `: ${planReview.planChanges.join(' / ')}` : ''}`)
+
   phase('Build')
-  const build = await runAgentUntilResult(buildPrompt(plan.criteria, referenceSearch.references, plan.planSummary), { label: 'build', phase: 'Build', schema: BUILD_SCHEMA })
+  // Criteria the person changed after the plan was made (args.criteriaOverrides:
+  // [{criterionId, lineId, checkedBy, passCondition, howToCheck}]). They apply
+  // from the stage after args.overridesAfterStage (default: from the first stage).
+  const overrides = Array.isArray(ARGS.criteriaOverrides) ? ARGS.criteriaOverrides : []
+  const applyOverrides = (criteria) => criteria.map((criterion) => {
+    const override = overrides.find((entry) => entry.criterionId === criterion.criterionId)
+    return override ? { ...criterion, ...override, kind: criterion.kind } : criterion
+  })
+  const stageOutcomes = []
+  const overridesFrom = ARGS.overridesAfterStage ? BUILD_STAGES.findIndex((stage) => stage.key === ARGS.overridesAfterStage) + 1 : 0
+  for (const [stageIndex, stage] of BUILD_STAGES.entries()) {
+    const buildCriteria = stageIndex >= overridesFrom ? applyOverrides(plan.criteria) : plan.criteria
+    stageOutcomes.push(await runBuildStage(stage, buildCriteria, referenceSearch.references, plan.planSummary))
+  }
+  if (overrides.length > 0) {
+    log(`criteria changed by the person: ${overrides.map((entry) => entry.criterionId).join(', ')}`)
+  }
+  const build = {
+    notes: stageOutcomes.map((outcome) => `${outcome.key}: ${outcome.passed ? 'done' : `not reached (${outcome.lastReason})`}${outcome.redesigns.length ? `; redesigned: ${outcome.redesigns.join(' / ')}` : ''}`).join('\n'),
+  }
 
   state = {
     round: 0,
     planSummary: plan.planSummary,
     expectations: plan.expectations,
     defaultsTaken: [...plan.defaultsTaken, build.notes],
-    criteria: plan.criteria,
+    planChanges: planReview.planChanges,
+    stageOutcomes,
+    criteria: applyOverrides(plan.criteria),
     references: referenceSearch.references,
     linesWithoutReference: referenceSearch.linesWithoutReference,
     failStreaks: {},
@@ -761,7 +1017,10 @@ for (;;) {
     }
   }
 
-  const fix = await runAgentUntilResult(fixPrompt(state.criteria, failedVerdicts, state.failStreaks, state.fixHistory, state.references), { label: `fix r${round}`, phase: 'Fix', schema: FIX_SCHEMA })
+  const fix = await runWatched(fixPrompt(state.criteria, failedVerdicts, state.failStreaks, state.fixHistory, state.references), { label: `fix r${round}`, phase: 'Fix', schema: FIX_SCHEMA })
+  if (fix.status === 'blocked') {
+    log(`fix r${round}: blocked: ${fix.blockedOn || '(no detail)'}`)
+  }
   for (const change of fix.changes) {
     state.fixHistory[change.criterionId] = [...(state.fixHistory[change.criterionId] || []), { round, whatChanged: change.whatChanged }]
   }
