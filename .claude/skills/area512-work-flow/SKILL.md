@@ -1,6 +1,6 @@
 ---
 name: area512-work-flow
-description: Make an Area512 game from a game definition file (game-definitions/*.md). First hear the person out, one question at a time, to draw out what they want the game to be, and turn it yourself into design decisions and the bounds of the build, written into the definition; then, without asking anything more, build it and repeat audits of its game play and its look, and fixes, until every line of the definition passes, for at most three rounds. Use only when the person runs /area512-work-flow <definition file>.
+description: Make an Area512 game from a game definition file (game-definitions/*.md). First hear the person out, one question at a time, to draw out what they want the game to be, and turn it yourself into design decisions and the bounds of the build, written into the definition; then, without asking anything more, review the plan with small probes and build the game in stages, each checked by a fresh agent before the next starts. Use only when the person runs /area512-work-flow <definition file>.
 argument-hint: <definition file>
 ---
 
@@ -167,33 +167,30 @@ If the tool does not know the name, pass
 Wait for it to finish. Do nothing else in the project while it runs: its
 steps use the emulator one at a time.
 
-- If it returns `finished: false`, run it again with the same `args` plus
-  `continuation` set to the `continuation` it returned. It returns this when it
-  is close to the 1000-agent limit of one run.
 - If the run fails, start it again with `resumeFromRunId` and the same
   `scriptPath`, so that the steps already done are not run again.
 
-Repeat until it returns `finished: true`.
-
-The run ends after 3 rounds even if criteria still fail (`args.maxRounds`
-changes the number). It then returns `roundLimitReached: true` and the failed
-verdicts in `unresolved`. Do not run it again for them: report them.
+The run ends when the last build stage is done. A stage whose check still
+fails after its tries, or whose builder stays blocked after its redesigns,
+is not run again: the run goes on and returns it in `unreachedStages`. Do not
+run the workflow again for it: report it.
 
 ## 5. Report
 
 Write `workflow-runs/<name>/report.md` from the result:
 
-- each criterion: its id, the line of the definition it came from, its pass
-  condition, the audit's reason and the evidence files
+- each build stage (`stageOutcomes`): its goal, whether its check passed, the
+  number of attempts, the reason of its last check and the redesigns it needed
+- each criterion: its id, the line of the definition it came from and its
+  pass condition
 - the expectations of the genre the plan added (`expectations`, the E lines):
-  each with why it is taken for granted; their criteria are listed as above
+  each with why it is taken for granted
+- the changes of the plan review (`planChanges`)
 - the reference images: path and source URL
 - `defaultsTaken`, and the look lines without a reference image
   (`linesWithoutReference`)
-- the number of rounds
-- if `roundLimitReached` is true: each criterion in `unresolved`, with the
-  audit's reason and the changes the fixes tried (`fixHistory`), first in the
-  report and in your message to the person
+- if `unreachedStages` is not empty: each of them with the reason of its last
+  check, first in the report and in your message to the person
 
 Then tell the person that it is done, where the report is, and how to try the
 app:

@@ -3,8 +3,9 @@
 <!--
 Copy this file to game-definitions/<name>.md, fill it in, and start with
   /area512-work-flow game-definitions/<name>.md
-Once started, it does not stop until every line of "Fun", "Play" and "Look"
-passes, or after 5 rounds of fixes.
+It first asks you about the game, one question at a time. Once started, it
+does not stop until the last build stage is done; each stage is checked
+before the next one starts.
 Do not add reference images. The agent finds them on the web from "Look".
 -->
 
