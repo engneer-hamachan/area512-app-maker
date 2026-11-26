@@ -138,9 +138,35 @@ files. A file far denser than that does not give a compile error: **the device
 crashes with "Out of memory"**. The 2432S028 has 20 KB less, so keep its files
 and data smaller than the Cardputer's.
 
+### Memory budget
+
+Measured in the Cardputer emulator. Plan with these numbers before you write a
+large app; finding them out while building costs hours.
+
+- Every file in the manifest stays loaded for the whole run. Its bytecode, its
+  methods and every object the app makes share one memory. About 70 KB of it is
+  left for them. Estimate a file's cost as its `.mrb` size plus about 42 bytes
+  for each method, block and lambda.
+- A large app is split into apps from the start (see the next section).
+- In a chain of apps, each app loads its own copy of every file it lists. Files
+  that every app needs (constants, tables, save and load) are paid for in each
+  app, so keep them small.
+- Fewer, larger methods cost less than many small ones, and fewer files cost
+  less than many tiny ones. `require` costs nothing measurable.
+- Long string literals stay in memory. Keep messages short. Keep a large table
+  as one packed string and read a row when it is needed.
+- Garbage runs out too. Building a long string or array with repeated `+=`, or
+  splitting a long text into hundreds of small strings at once, can exhaust the
+  memory although the code fits. Append to one string with `<<`, and read
+  numbers out of a text in place.
+- In the emulator, running out of memory may not print "Out of memory": the
+  screen stays black and the browser reports `Aborted()`. A black screen right
+  after loading means the app does not fit.
+- To see how much is left, load the files, then make filler objects until the
+  app stops, and count them.
+
 ### Hand off to another app
 
-A large app is split into apps from the start, not after it is written.
 When one app cannot fit in the memory, even split by role, split it into apps
 and switch between them with `Area512.run_next(path)`: when the current app
 returns, the file manager runs `path` right away, such as `/home/apps/<name>-battle`.
