@@ -149,46 +149,101 @@ and data smaller than the Cardputer's.
 
 ### Memory budget
 
-Measured in the Cardputer emulator. Plan with these numbers before you write a
-large app; finding them out while building costs hours.
+Measured on the Cardputer emulator, which has the device's Ruby memory. Plan
+with these numbers before you write a large app; finding them out while
+building costs hours.
 
-- Every file in the manifest stays loaded for the whole run. Its bytecode, its
-  methods and every object the app makes share one memory. About 70 KB of it is
-  left for them. Estimate a file's cost as its `.mrb` size plus about 42 bytes
-  for each method, block and lambda.
-- A large app is split into apps from the start (see the next section).
-- In a chain of apps, each app loads its own copy of every file it lists. Files
-  that every app needs (constants, tables, save and load) are paid for in each
-  app, so keep them small.
-- Fewer, larger methods cost less than many small ones, and fewer files cost
-  less than many tiny ones. `require` costs nothing measurable.
-- Long string literals stay in memory. Keep messages short. Keep a large table
-  as one packed string and read a row when it is needed.
+**Write every loop with `while` and an index. Never use a block** (`each`,
+`times`, `map`, `select`, `reject!`, `each_with_index`, `loop`, `{ |x| ... }`,
+`do ... end`). A block makes objects on every call and takes far more memory
+than the same loop written with `while`. The only blocks allowed are the ones
+an API requires (`STDIN.raw { }`). The examples in `docs/reference/examples/`
+still use blocks: take their structure, not their loops.
+
+```ruby
+i = 0
+while i < @mons.length      # not: @mons.each { |m| ... }
+  m = @mons[i]
+  ...
+  i += 1
+end
+i = @items.length - 1
+while i >= 0                # not: @items.reject! { |r| ... }
+  @items.delete_at(i) if gv(@items[i], 4) == 0
+  i -= 1
+end
+```
+
+What the memory holds:
+
+- 100 KB in all, of which about 20 KB is used before the app starts.
+  `require` costs nothing measurable. A `Sprite` or `QuaternarySprite` buffer
+  is outside this memory.
+- Every file in the manifest stays loaded for the whole run: its bytecode,
+  about 1.5 times its `.mrb` size, and about 90 bytes for each method. 150
+  one-line methods cost 13 KB more than the same code in one method. So:
+  - fold a method that is called from one place only into its caller;
+  - prefer fewer, larger methods and fewer files;
+  - short names save almost nothing; leave them readable.
+- An app whose `.mrb` files add up to more than about 40 KB has little room
+  left for its data. Above about 45 KB it can stop at the first frame.
+- A string literal is held twice: once in the code and once as the object made
+  from it. Keep long texts out of the code:
+  - messages: one small file per message (`m/12.txt`), read with `SD.read`
+    when it is shown;
+  - a large packed table: a data file read once, not a literal.
+- Reading one large file needs one large free block, and the free memory is in
+  pieces. Many small files are safer than one large one.
+- Keep rows of numbers as strings of 2-byte fields (`getbyte`/`setbyte`), not
+  arrays.
+
+Saving and loading:
+
+- `SD.write` and `SD.read` keep every byte, 0 and newline included. Save rows
+  as they are (the row strings joined) and numbers as fixed bytes, each block
+  after a 2-byte length; read a block by slicing. Do not write numbers as
+  decimal text and parse them back digit by digit: that code and its garbage
+  are paid for in every app of a chain.
+- Load only what the current screen needs. Split the save by area (one file
+  per room, passage or level) so that an app reads only the area it shows,
+  and the rest stays on the card until the player goes there.
+- Build a file's text straight into one string with `<<`; do not build a part
+  in another string first and copy it in. Let big objects go (set them to
+  `nil`) before saving, and read one file at a time.
+
+When it runs out:
+
 - Garbage runs out too. Building a long string or array with repeated `+=`, or
   splitting a long text into hundreds of small strings at once, can exhaust the
   memory although the code fits. Append to one string with `<<`, and read
   numbers out of a text in place.
 - A long computation fills the memory as it runs, although every file fits:
-  a game that simulates many stages, turns or items in one launch can stop
-  with "Out of memory" partway. Plan it from the start to run a few steps per
-  launch: keep its state in a file under `/data`, and let the app start
-  itself again with `Area512.run_next` until it is done (see "Hand off to
-  another app"). Each launch starts with the memory empty.
-- When "Out of memory" appears, change the structure (split the app into
-  more apps, run fewer steps per launch, keep tables packed) instead of
-  searching for what fills the memory: the search costs hours, the split
-  minutes.
+  plan it from the start to run a few steps per launch, with its state in a
+  file under `/data` (see "Hand off to another app").
 - In the emulator, running out of memory may not print "Out of memory": the
-  screen stays black and the browser reports `Aborted()`. A black screen right
-  after loading means the app does not fit.
-- To see how much is left, load the files, then make filler objects until the
-  app stops, and count them.
+  screen stays black and the browser reports `Aborted()` in `area512 errors`.
+  A black screen right after loading means the app does not fit.
+- See how much is left with `top` in the terminal, after an app has run and
+  returned: `ARN` is this memory, with what was free when the app ended. To
+  measure a heavy moment, make a test app that loads the app's files, sets up
+  that moment (the fullest save, one drawn frame, one save) and returns; then
+  run `top`. Keep at least 10 KB free in the heaviest moment.
+- When it does not fit, change the structure (fewer methods, data out of the
+  code, load less, split at a pause) instead of searching for what fills the
+  memory.
 
 ### Hand off to another app
 
 When one app cannot fit in the memory, even split by role, split it into apps
 and switch between them with `Area512.run_next(path)`: when the current app
 returns, the file manager runs `path` right away.
+
+Split where the game already pauses: a new level, a ladder or a door to
+another area, a menu. Show what is happening while the next part loads
+("You climb down the stairs..."), and keep everything the player does in one
+place, in one part: never hand off for one command and back, and let a menu
+stay open until the player closes it. A split made only because a part
+overflowed leaves the player waiting on every action.
 
 Put each part in a subfolder of the app, never next to it as another app
 (`apps/<name>-battle/`): an app is installed and published as one folder.

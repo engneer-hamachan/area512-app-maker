@@ -109,6 +109,7 @@ const BUILT_IN_CRITERIA = [
 const COMMON_RULES = `You are one step of an unattended workflow that makes the Area512 app \`${appName}\` for the ${boardSettings.deviceColumnName}.
 - Nobody is watching. Never ask anything and never wait for an answer. When something is not decided, take the sensible default and say which one in your result.
 - Follow docs/app-development.md and AGENTS.md, using only the "${boardSettings.deviceColumnName}" column of the "Which device" table. The emulator service is \`${boardSettings.emulatorService}\`. The MCP server is \`${boardSettings.mcpServerName}\`; if its tools are not connected, read the signatures folder of that column instead.
+- Write every loop with \`while\` and an index; never a block (\`each\`, \`times\`, \`map\`, \`select\`, \`reject!\`, \`{ |x| }\`, \`do ... end\`): blocks take far more memory. Follow "Memory budget" in the guide: few, larger methods; long texts and tables in data files read when needed; saves as bytes, split by area so that only the area on screen is loaded; hand off between parts only at pauses the game already has (a new level, a ladder, a menu), never for one command and back.
 - The person asked for deeper testing than the guide's light check. In the checks, writing a bot, playing to the end and repeating runs are wanted.
 - Only one step uses the emulator at a time. Use it only when your step says so.
 - Run heavy computations on this machine one at a time, with \`nice -n 19\` and \`timeout\`.
@@ -367,7 +368,7 @@ const FINAL_CHECK_SCHEMA = {
 }
 
 const STOP_RULE = `- When something resists two attempts (the same error, a crash, a check that keeps failing), stop. Do not search for its root cause, do not write probe apps to narrow it down, and do not keep trying variants. Return status "blocked" with what fails, what you saw and the two things you tried. A fresh agent will change the design to avoid it.
-- Prefer a change of structure to a hunt for a cause: when an app runs out of memory, split it into parts in subfolders of the app (\`apps/<name>/<part>/\`, run with \`Area512.run_next\`, passing state through a file under \`/data\`; never sibling apps) or make a long computation run a few steps per launch; when a screen is slow, draw less per frame.
+- Prefer a change of structure to a hunt for a cause: when an app runs out of memory, first cut its code (fold single-call methods, move texts and tables into data files, load only the area on screen); split it into parts in subfolders of the app (\`apps/<name>/<part>/\`, run with \`Area512.run_next\`, passing state through a file under \`/data\`; never sibling apps) only at a pause the game already has or make a long computation run a few steps per launch; when a screen is slow, draw less per frame.
 - Work only toward the goal of your step. Do not start the work of a later stage.`
 
 function planPrompt(missingLineIds) {

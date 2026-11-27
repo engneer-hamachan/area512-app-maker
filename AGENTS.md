@@ -40,6 +40,10 @@ The person may know nothing about Area512, Ruby or the Cardputer.
   check the methods in the signature files the guide names (`docs/reference/sig/`,
   or `docs/reference/sig-2432s028/` for the 2432S028). This is the same check;
   the app work does not stop for it.
+- Write every loop with `while` and an index; never use a block (`each`,
+  `times`, `map`, `{ |x| }`, `do ... end`). Blocks take far more memory. Follow
+  "Memory budget" in the guide for the rest: few methods, texts and tables in
+  data files, saves as bytes, load only the area on screen.
 - When an app is written, do a light check and stop: compile it, run it in the
   emulator, try its main action, and look at one screenshot. Test further only
   when the person asks.
