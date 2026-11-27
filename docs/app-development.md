@@ -147,11 +147,11 @@ large app; finding them out while building costs hours.
   methods and every object the app makes share one memory. About 70 KB of it is
   left for them. Estimate a file's cost as its `.mrb` size plus about 42 bytes
   for each method, block and lambda.
-- Plan one app. A game whose state is small (a card game, a puzzle, a board
-  game) fits in one app: what fills the memory is the code, not the state.
-  Before writing a large app, add up the planned files' `.mrb` sizes and plan
-  the code to fit. Splitting into apps is the last resort, after "Optimize
-  before you split" below.
+- Plan the apps by scene. A large game may be split into apps at the places
+  where its screen changes anyway (title, the play, the shop, the results),
+  but one scene is always one app (see "Optimize before you split"). Before
+  writing, add up the planned `.mrb` sizes of each app and plan the code of
+  each scene to fit.
 - In a chain of apps, each app loads its own copy of every file it lists. Files
   that every app needs (constants, tables, save and load) are paid for in each
   app, so keep them small.
@@ -172,7 +172,7 @@ large app; finding them out while building costs hours.
 - When "Out of memory" appears, do not search for what fills the memory
   byte by byte: measure the files (`ls -l` of the `.mrb` files and the count
   of methods), then make the code smaller as "Optimize before you split" says.
-  Split the app only when that is done and it still does not fit.
+  Inside one scene, never split: make its code fit.
 - In the emulator, running out of memory may not print "Out of memory": the
   screen stays black and the browser reports `Aborted()`. A black screen right
   after loading means the app does not fit.
@@ -181,44 +181,39 @@ large app; finding them out while building costs hours.
 
 ### Optimize before you split
 
-Every switch between apps shows the file manager for a moment and makes the
-player wait. Make the code fit first, in this order, and measure the `.mrb`
-sizes after each step:
+Splitting a game into apps at a change of scene is fine: the title, the play,
+the shop and the results can each be an app, and the screen changes there
+anyway. What must never happen is a switch of apps **inside one scene**: while
+the player stays on one screen and acts (a tap, a move, a play, a choice in a
+dialog, a panel over the play), every action is handled by the same app. A
+switch shows the file manager for a moment and makes the player wait, so a
+scene that switches apps on every action is not playable.
+
+So when the app of one scene does not fit, do not split it: make its code
+smaller, in this order, and measure the `.mrb` sizes after each step:
 
 1. **Content as data, not code.** Many items of one kind (charms, cards,
    enemies, levels, spells) are rows of one packed table string, run by a few
    general methods: an effect is a kind and a number, not a method or a
-   `case` branch of its own. Forty items should cost a table row each, not
-   forty pieces of code.
+   `case` branch of its own.
 2. **Compute only what the screen needs now.** Work out the result of the
    current selection when it changes; do not compute every possible choice in
-   advance, and do not keep results the screen will not show.
-3. **One copy of each piece of code.** Drawing helpers, the button row and the
-   rules are written once and shared; no two screens carry their own copy of
-   the same work.
-4. **Nothing in the play app that the player does not use.** Debug menus,
-   cheats and test drivers stay out of the shipped manifest; tests call the
-   rules without the screen (see "Test the logic without the screen").
+   advance.
+3. **One copy of each piece of code** in the app: drawing helpers, the button
+   row and the rules are written once.
+4. **Only what this scene uses.** Code of other scenes, debug menus, cheats
+   and test drivers stay out of its manifest; tests call the rules without
+   the screen (see "Test the logic without the screen").
 5. **Fewer, larger methods and files**, short strings, and no long-lived
    arrays of objects where one packed string does.
 6. **Simpler content last**: fewer frames of an effect, smaller pictures.
 
-Split into apps only when all of this is done and the measured app still does
-not fit. Then:
-
-- Split at the places where the game already changes scene (title, the play,
-  the shop, the results), never inside one scene: one action of the player (a
-  tap, a move, a play, a choice in a dialog) never switches apps.
-- Use as few apps as fit: two or three, not one per action or per role.
-- Every app keeps the same window place and the same button row, so nothing
-  moves when the next app starts.
-- Write down in the plan the sizes measured before and after each step above,
-  and why the split is still needed.
+Every app of the game keeps the same window place and the same button row, so
+nothing moves when the next scene's app starts.
 
 ### Hand off to another app
 
-When one app cannot fit in the memory, even after "Optimize before you split",
-split it into apps
+To split a game at a change of scene, split it into apps
 and switch between them with `Area512.run_next(path)`: when the current app
 returns, the file manager runs `path` right away, such as `/home/apps/<name>-battle`.
 Pass what the next app needs through a file under `/data` with `SD.write`, and
