@@ -147,7 +147,11 @@ large app; finding them out while building costs hours.
   methods and every object the app makes share one memory. About 70 KB of it is
   left for them. Estimate a file's cost as its `.mrb` size plus about 42 bytes
   for each method, block and lambda.
-- A large app is split into apps from the start (see the next section).
+- Plan one app. A game whose state is small (a card game, a puzzle, a board
+  game) fits in one app: what fills the memory is the code, not the state.
+  Before writing a large app, add up the planned files' `.mrb` sizes and plan
+  the code to fit. Splitting into apps is the last resort, after "Optimize
+  before you split" below.
 - In a chain of apps, each app loads its own copy of every file it lists. Files
   that every app needs (constants, tables, save and load) are paid for in each
   app, so keep them small.
@@ -165,19 +169,56 @@ large app; finding them out while building costs hours.
   launch: keep its state in a file under `/data`, and let the app start
   itself again with `Area512.run_next` until it is done (see "Hand off to
   another app"). Each launch starts with the memory empty.
-- When "Out of memory" appears, change the structure (split the app into
-  more apps, run fewer steps per launch, keep tables packed) instead of
-  searching for what fills the memory: the search costs hours, the split
-  minutes.
+- When "Out of memory" appears, do not search for what fills the memory
+  byte by byte: measure the files (`ls -l` of the `.mrb` files and the count
+  of methods), then make the code smaller as "Optimize before you split" says.
+  Split the app only when that is done and it still does not fit.
 - In the emulator, running out of memory may not print "Out of memory": the
   screen stays black and the browser reports `Aborted()`. A black screen right
   after loading means the app does not fit.
 - To see how much is left, load the files, then make filler objects until the
   app stops, and count them.
 
+### Optimize before you split
+
+Every switch between apps shows the file manager for a moment and makes the
+player wait. Make the code fit first, in this order, and measure the `.mrb`
+sizes after each step:
+
+1. **Content as data, not code.** Many items of one kind (charms, cards,
+   enemies, levels, spells) are rows of one packed table string, run by a few
+   general methods: an effect is a kind and a number, not a method or a
+   `case` branch of its own. Forty items should cost a table row each, not
+   forty pieces of code.
+2. **Compute only what the screen needs now.** Work out the result of the
+   current selection when it changes; do not compute every possible choice in
+   advance, and do not keep results the screen will not show.
+3. **One copy of each piece of code.** Drawing helpers, the button row and the
+   rules are written once and shared; no two screens carry their own copy of
+   the same work.
+4. **Nothing in the play app that the player does not use.** Debug menus,
+   cheats and test drivers stay out of the shipped manifest; tests call the
+   rules without the screen (see "Test the logic without the screen").
+5. **Fewer, larger methods and files**, short strings, and no long-lived
+   arrays of objects where one packed string does.
+6. **Simpler content last**: fewer frames of an effect, smaller pictures.
+
+Split into apps only when all of this is done and the measured app still does
+not fit. Then:
+
+- Split at the places where the game already changes scene (title, the play,
+  the shop, the results), never inside one scene: one action of the player (a
+  tap, a move, a play, a choice in a dialog) never switches apps.
+- Use as few apps as fit: two or three, not one per action or per role.
+- Every app keeps the same window place and the same button row, so nothing
+  moves when the next app starts.
+- Write down in the plan the sizes measured before and after each step above,
+  and why the split is still needed.
+
 ### Hand off to another app
 
-When one app cannot fit in the memory, even split by role, split it into apps
+When one app cannot fit in the memory, even after "Optimize before you split",
+split it into apps
 and switch between them with `Area512.run_next(path)`: when the current app
 returns, the file manager runs `path` right away, such as `/home/apps/<name>-battle`.
 Pass what the next app needs through a file under `/data` with `SD.write`, and

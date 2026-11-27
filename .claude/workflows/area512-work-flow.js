@@ -104,6 +104,14 @@ const BUILT_IN_CRITERIA = [
     passCondition: 'Nothing on any screen looks unnatural. Judge every screenshot as a person who knows the real thing the game shows would see it at first glance; any one thing that looks odd, wrong or out of place fails, however well every other criterion passes. This covers, among others: what is nearer the viewer drawn behind what is farther, or not lower and larger; sizes that do not shrink with distance by one rule; objects where they could not be in reality or in the rules (a ball not where the player is about to touch it, feet off the ground, things floating, sinking into or passing through each other); light, shadows, proportions or colors that disagree; motion that jumps, stops or bends where nothing makes it; text or parts that overlap, are cut off or cover what matters. The ball drawn farther away than a kicker seen from behind, when it should lie in front of the kicker\'s feet, is one example, not the whole rule.',
     howToCheck: 'No own capture: the checker looks at every enlarged screenshot and every burst contact sheet it took, and lists each thing that looks unnatural.',
   },
+  {
+    criterionId: 'B5',
+    lineId: 'B',
+    kind: 'game',
+    checkedBy: 'screen',
+    passCondition: `The game is one app, or the plan's "Memory plan" section shows why it cannot be: the \`.mrb\` sizes measured after every step of "Optimize before you split" in docs/app-development.md, and the app still over the budget. When it is more than one app: no action of the player inside one scene (a tap, a move, a play, a choice in a dialog) switches apps, there are at most 3 apps, and every app keeps the same window place and button layout.`,
+    howToCheck: `List the folders under \`${appDirectory}/\` that have a main.manifest and the summed \`.mrb\` size of each manifest, and read the "Memory plan" section. In the emulator, do every action of the main play screen once and see whether the file manager shows between the tap and the result.`,
+  },
 ]
 
 const COMMON_RULES = `You are one step of an unattended workflow that makes the Area512 app \`${appName}\` for the ${boardSettings.deviceColumnName}.
@@ -367,7 +375,7 @@ const FINAL_CHECK_SCHEMA = {
 }
 
 const STOP_RULE = `- When something resists two attempts (the same error, a crash, a check that keeps failing), stop. Do not search for its root cause, do not write probe apps to narrow it down, and do not keep trying variants. Return status "blocked" with what fails, what you saw and the two things you tried. A fresh agent will change the design to avoid it.
-- Prefer a change of structure to a hunt for a cause: when an app runs out of memory, split it into more apps (\`Area512.run_next\`, passing state through a file under \`/data\`) or make a long computation run a few steps per launch; when a screen is slow, draw less per frame.
+- Prefer a change of structure to a hunt for a cause. When an app runs out of memory, make its code smaller as "Optimize before you split" in docs/app-development.md says (content as table rows run by a few general methods, compute only what the screen shows now, one copy of shared code, no debug code in the shipped manifest), measuring the \`.mrb\` sizes after each step. Split into apps only when that is done and it still does not fit, and only at a change of scene, never inside one action of the player. When a screen is slow, draw less per frame.
 - Work only toward the goal of your step. Do not start the work of a later stage.`
 
 function planPrompt(missingLineIds) {
@@ -381,7 +389,7 @@ Design the game and fix the pass conditions the builders and checkers will use. 
 Genre: ${ARGS.genre}
 Controls: ${boardSettings.inputDescription}.
 ${missingNote}
-1. Read the definition and docs/app-development.md. Write \`${runDirectory}/plan.md\`: the rules, what is on each screen, the controls, how a game ends and what is kept after quitting. Keep it within the board's screen and memory as the guide gives them. If the app is large, plan it as several apps from the start. Add a section "Blinking" that lists each item that blinks by design, and why that kind of game has it; write "none" when nothing does.
+1. Read the definition and docs/app-development.md. Write \`${runDirectory}/plan.md\`: the rules, what is on each screen, the controls, how a game ends and what is kept after quitting. Keep it within the board's screen and memory as the guide gives them. Plan one app: add a section "Memory plan" with the planned files, the estimated \`.mrb\` size of each and their sum against the budget, and write how content is kept as data (one table row per item, run by a few general methods) so that the code fits. Plan more than one app only if the sum is still over the budget after every step of "Optimize before you split" in the guide; then split only at a change of scene (title, play, shop, results), at most 3 apps, and write why. Add a section "Blinking" that lists each item that blinks by design, and why that kind of game has it; write "none" when nothing does.
 2. For every line below, write one or more criteria with:
    - checkedBy: "logic" or "screen". See "Test the logic without the screen" in the guide.
      - logic: what the rules and numbers of the game decide, above all what needs many tries to show: random setups and their ranges, odds, physics results, what an opponent decides, difficulty from stage to stage, scores, which choice or strategy pays off over many tries. A logic test runs the app's own code many times, as fast as the VM can, without the screen.
@@ -419,10 +427,10 @@ const planReviewPrompt = `${COMMON_RULES}
 
 Review \`${runDirectory}/plan.md\` before any app code is written, and change the plan where it will not hold on the device. You may use the emulator. Write only in \`${runDirectory}/\`; probes go in \`${runDirectory}/probes/\` and are copied to \`apps/<probe name>/\` only while they run, then removed from \`apps/\`.
 
-1. Read docs/app-development.md (above all "Split by role", "Memory budget" and "Hand off to another app") and plan.md.
+1. Read docs/app-development.md (above all "Split by role", "Memory budget", "Optimize before you split" and "Hand off to another app") and plan.md.
 2. List the risks: the parts of the plan most likely to fail on the device or to take long to build. Always consider: the memory of each app at its largest moment (its files, its tables, and what it builds up over the longest case, such as the deepest stage, the longest game or the most items), the screen that draws the most per frame, and the largest set of content to make.
 3. For at most 3 risks the guide does not settle by itself, make a small probe that reproduces only the risky part (for example, the app's longest loop with empty steps, building up what the real one builds up) and run it in the emulator once. Each probe takes at most 10 minutes. Record what happened.
-4. For every risk that is not ok, change plan.md so that it holds: split an app into more apps, run a long computation a few steps per launch with its state in a file, make tables smaller, draw less. Write each change under a heading "Plan review" in plan.md. Do not change the rules of the game or the pass conditions.`
+4. For every risk that is not ok, change plan.md so that it holds, trying these in order: make the code smaller as "Optimize before you split" says (content as table rows, compute only what is shown now, shared code once, no debug code), make tables smaller, draw less, run a long computation a few steps per launch; split an app into more apps only when the measured sizes still do not fit, at a change of scene, and update the "Memory plan" section with the numbers. Write each change under a heading "Plan review" in plan.md. Do not change the rules of the game or the pass conditions.`
 
 function stagePrompt(stage, criteria, references, planSummary, attempt) {
   const retryNote = attempt.lastCheck
@@ -472,7 +480,7 @@ function redesignPrompt(stage, blockedOn) {
 The builder of stage "${stage.title}" of the app in \`${appDirectory}/\` is blocked:
 ${blockedOn}
 
-Change the design so that the problem is avoided, not explained. Do not search for its root cause and do not write probes. Read docs/app-development.md (above all "Memory budget" and "Hand off to another app") and \`${runDirectory}/plan.md\`, then choose the change of structure that makes the problem impossible: split an app into more apps, run a long computation a few steps per launch with its state in a file, keep a table as a packed string read one row at a time, draw less per frame, or make a set of content simpler. Keep the rules of the game and the pass conditions.
+Change the design so that the problem is avoided, not explained. Do not search for its root cause and do not write probes. Read docs/app-development.md (above all "Memory budget" and "Hand off to another app") and \`${runDirectory}/plan.md\`, then choose the change of structure that makes the problem impossible. For memory, first make the code smaller as "Optimize before you split" in the guide says, with the measured \`.mrb\` sizes before and after: content as packed table rows run by a few general methods, compute only what the screen shows now, one copy of shared code, no debug code in the shipped manifest, fewer and larger methods. Split an app into more apps only when that is done and it still does not fit, only at a change of scene (never inside one action of the player), at most 3 apps, and record the numbers in the "Memory plan" section. For other problems: run a long computation a few steps per launch with its state in a file, draw less per frame, or make a set of content simpler. Keep the rules of the game and the pass conditions.
 
 Write the change in plan.md under the heading "Redesign: ${stage.key}", as instructions the builder can follow. Do not change \`apps/\`.`
 }
