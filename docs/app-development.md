@@ -164,15 +164,15 @@ large app; finding them out while building costs hours.
   memory although the code fits. Append to one string with `<<`, and read
   numbers out of a text in place.
 - A long computation fills the memory as it runs, although every file fits:
-  a game that simulates many stages, turns or items at once can stop with
-  "Out of memory" partway. Run it a few steps per frame inside the same app,
-  reusing the same arrays and strings instead of making new ones each step.
-  Never restart the app with `Area512.run_next` in the middle of a scene to
-  empty the memory: that is a switch of apps inside a scene.
+  a game that simulates many stages, turns or items in one launch can stop
+  with "Out of memory" partway. Plan it from the start to run a few steps per
+  launch: keep its state in a file under `/data`, and let the app start
+  itself again with `Area512.run_next` until it is done (see "Hand off to
+  another app"). Each launch starts with the memory empty.
 - When "Out of memory" appears, do not search for what fills the memory
   byte by byte: measure the files (`ls -l` of the `.mrb` files and the count
   of methods), then make the code smaller as "Optimize before you split" says.
-  Inside one scene, never split, whatever the reason: make its code fit.
+  Inside one scene, never split: make its code fit.
 - In the emulator, running out of memory may not print "Out of memory": the
   screen stays black and the browser reports `Aborted()`. A black screen right
   after loading means the app does not fit.
@@ -189,10 +189,8 @@ dialog, a panel over the play), every action is handled by the same app. A
 switch shows the file manager for a moment and makes the player wait, so a
 scene that switches apps on every action is not playable.
 
-**There is no exception.** When the app of one scene does not fit, never split
-it into apps and never restart it with `Area512.run_next` to empty the memory:
-make its code smaller, in this order, and measure the `.mrb` sizes after each
-step, until it fits:
+So when the app of one scene does not fit, do not split it: make its code
+smaller, in this order, and measure the `.mrb` sizes after each step:
 
 1. **Content as data, not code.** Many items of one kind (charms, cards,
    enemies, levels, spells) are rows of one packed table string, run by a few
